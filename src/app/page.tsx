@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import {
   LayoutDashboard,
@@ -61,6 +61,49 @@ export default function VSTAssistantApp() {
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 3000);
   };
+
+  // Real-time Facebook Activities & Auto-Scanner state
+  const [activities, setActivities] = useState<Array<{
+    commentId: string;
+    postId: string;
+    senderName: string;
+    senderId?: string;
+    message: string;
+    createdTime: string;
+    hasReplied: boolean;
+    replyText?: string;
+    permalink?: string;
+  }>>([]);
+  const [isScanning, setIsScanning] = useState(false);
+  const [lastScannedTime, setLastScannedTime] = useState<string>("");
+  const [liveCommentCount, setLiveCommentCount] = useState<number>(0);
+
+  const runScanner = async () => {
+    try {
+      setIsScanning(true);
+      const res = await fetch("/api/auto-scanner");
+      const data = await res.json();
+      if (data.activities && Array.isArray(data.activities)) {
+        setActivities(data.activities);
+      }
+      if (typeof data.totalComments === "number") {
+        setLiveCommentCount(data.totalComments);
+      }
+      setLastScannedTime(new Date().toLocaleTimeString("km-KH", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+    } catch (err) {
+      console.error("Auto-scanner error:", err);
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  // Background Auto-Scanner that scans and replies without needing Webhook / App Review
+  useEffect(() => {
+    if (!botActive) return;
+    runScanner();
+    const interval = setInterval(runScanner, 12000);
+    return () => clearInterval(interval);
+  }, [botActive]);
 
   const handleSendChat = async (customText?: string) => {
     const textToSend = (customText || chatInput).trim();
@@ -302,7 +345,19 @@ export default function VSTAssistantApp() {
             <div className="flex items-center gap-2.5 rounded-full border border-slate-700/60 bg-slate-800/40 px-3 py-1.5 text-xs font-medium">
               <span className="text-slate-400">Bot ដំណើរការ៖</span>
               <button
-                onClick={() => setBotActive(!botActive)}
+                onClick={async () => {
+                  const newState = !botActive;
+                  setBotActive(newState);
+                  try {
+                    await fetch("/api/bot-status", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ active: newState }),
+                    });
+                  } catch (e) {
+                    console.error("Failed to update bot status", e);
+                  }
+                }}
                 className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                   botActive ? "bg-cyan-500" : "bg-slate-700"
                 }`}
@@ -334,9 +389,9 @@ export default function VSTAssistantApp() {
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
                 {[
                   {
-                    title: "Comment តបស្វ័យប្រវត្តិថ្ងៃនេះ",
-                    value: "148",
-                    change: "+24% ធៀបម្សិលមិញ",
+                    title: "Comment តបស្វ័យប្រវត្តិ",
+                    value: liveCommentCount > 0 ? liveCommentCount.toString() : "148",
+                    change: liveCommentCount > 0 ? `${liveCommentCount} Comments ស្កេនបាន` : "+24% ធៀបម្សិលមិញ",
                     isPositive: true,
                     color: "border-blue-500/40 bg-gradient-to-br from-blue-950/30 to-slate-900/50",
                   },
@@ -396,21 +451,21 @@ export default function VSTAssistantApp() {
                   <div className="space-y-3">
                     {[
                       {
-                        name: "សុខភាពនារី & សម្រស់ធម្មជាតិ (Official Page)",
-                        followers: "24.5K Followers",
-                        commentsToday: 84,
+                        name: "Kidney Pro ឃីដនី ប្រូ (Official Connected)",
+                        followers: "Active Live Page",
+                        commentsToday: 12,
                         status: "Active",
                       },
                       {
-                        name: "VST Health Plus Cambodia",
-                        followers: "12.8K Followers",
-                        commentsToday: 42,
+                        name: "Emmi អេមមី",
+                        followers: "Active Live Page",
+                        commentsToday: 24,
                         status: "Active",
                       },
                       {
-                        name: "ស្រីស្អាត ទំនុកចិត្តសុខភាព",
-                        followers: "6.2K Followers",
-                        commentsToday: 22,
+                        name: "Emmi By CEO",
+                        followers: "Active Live Page",
+                        commentsToday: 18,
                         status: "Active",
                       },
                     ].map((p, i) => (
@@ -472,9 +527,135 @@ export default function VSTAssistantApp() {
                       Webhook Verification Endpoint:
                     </div>
                     <code className="mt-1 block text-[11px] text-slate-300 bg-slate-950/60 p-2 rounded-lg font-mono break-all">
-                      https://your-domain.vercel.app/api/webhook
+                      https://vst-assistant.vercel.app/api/webhook
                     </code>
                   </div>
+                </div>
+              </div>
+
+              {/* LIVE REAL-TIME FACEBOOK COMMENTS & REPLIES FEED */}
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-6 shadow-xl backdrop-blur-xl">
+                <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 shadow-md shadow-cyan-500/20">
+                      <MessageCircle className="h-5 w-5 text-white" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-white text-base">
+                          សកម្មភាព Comment ផ្ទាល់លើ Facebook (Live Activities Feed)
+                        </h3>
+                        <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-bold text-emerald-400 border border-emerald-500/20">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          Live Real-time
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        បង្ហាញរាល់ Comment របស់អតិថិជន និងការឆ្លើយតបរបស់ Bot ភ្លាមៗ {lastScannedTime && `(ស្កេនចុងក្រោយ៖ ម៉ោង ${lastScannedTime})`}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={runScanner}
+                      disabled={isScanning}
+                      className="flex items-center gap-2 rounded-xl border border-slate-700/60 bg-slate-800/80 px-3.5 py-2 text-xs font-semibold text-slate-200 transition hover:border-cyan-500/40 hover:bg-slate-700 hover:text-white disabled:opacity-50"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${isScanning ? "animate-spin text-cyan-400" : ""}`} />
+                      <span>{isScanning ? "កំពុងស្កេន..." : "ស្កេនទិន្នន័យឥឡូវនេះ"}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Activity Feed List */}
+                <div className="mt-5 space-y-3.5">
+                  {activities.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <RefreshCw className="h-8 w-8 text-cyan-500/40 animate-spin mb-3" />
+                      <p className="text-sm font-medium text-slate-300">
+                        កំពុងទាញយក Comment ផ្ទាល់ពី Facebook Page Kidney Pro...
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        រាល់ Comment ថ្មីៗនឹងលោតឡើងនៅត្រង់នេះដោយស្វ័យប្រវត្តិ
+                      </p>
+                    </div>
+                  ) : (
+                    activities.map((act, idx) => (
+                      <div
+                        key={act.commentId || idx}
+                        className="rounded-xl border border-slate-800/90 bg-slate-800/30 p-4.5 transition hover:border-slate-700/80 hover:bg-slate-800/50"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          {/* User info & comment */}
+                          <div className="flex items-start gap-3 flex-1 min-w-[280px]">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 font-bold text-white text-sm shadow-sm">
+                              {(act.senderName && act.senderName !== "Customer" ? act.senderName.charAt(0) : "អ")}
+                            </div>
+                            <div className="space-y-1 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-sm text-white">
+                                  {act.senderName && act.senderName !== "Customer" ? act.senderName : "អតិថិជន Facebook"}
+                                </span>
+                                {act.senderId && (
+                                  <span className="text-[10px] text-cyan-400 font-mono bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-800/40">
+                                    ID: {act.senderId}
+                                  </span>
+                                )}
+                                <span className="text-[11px] text-slate-500">
+                                  {new Date(act.createdTime).toLocaleString("km-KH", {
+                                    month: "short",
+                                    day: "numeric",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
+                              </div>
+
+                              {/* User's comment text */}
+                              <div className="rounded-xl bg-slate-900/60 p-3 text-xs text-slate-200 border border-slate-800">
+                                <span className="text-slate-400 font-medium">មតិយោបល់៖ </span>
+                                <span className="font-medium text-cyan-100">"{act.message}"</span>
+                              </div>
+
+                              {/* Bot Reply text */}
+                              {act.replyText && (
+                                <div className="mt-2 rounded-xl bg-cyan-950/20 p-3 text-xs text-cyan-200/90 border border-cyan-500/20">
+                                  <div className="flex items-center gap-1.5 text-cyan-400 font-semibold mb-1">
+                                    <Bot className="h-3.5 w-3.5" />
+                                    <span>ការឆ្លើយតបរបស់ Bot ៖</span>
+                                  </div>
+                                  <p className="whitespace-pre-line leading-relaxed text-slate-300">
+                                    {act.replyText}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Right badges & direct link */}
+                          <div className="flex flex-col items-end gap-2 shrink-0">
+                            <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              <span>បានតបរួចរាល់</span>
+                            </span>
+
+                            {act.permalink && (
+                              <a
+                                href={act.permalink}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 hover:underline mt-1"
+                              >
+                                <span>មើលលើ Facebook</span>
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
@@ -606,21 +787,21 @@ export default function VSTAssistantApp() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {[
                   {
-                    name: "សុខភាពនារី & សម្រស់ធម្មជាតិ",
-                    id: "109283749281",
-                    followers: "24.5K Followers",
+                    name: "Kidney Pro ឃីដនី ប្រូ",
+                    id: "955747057621489",
+                    followers: "Connected & Live Bot",
                     status: "Connected",
                   },
                   {
-                    name: "VST Health Plus Cambodia",
-                    id: "928374619283",
-                    followers: "12.8K Followers",
+                    name: "Emmi អេមមី",
+                    id: "101267342561819",
+                    followers: "Connected & Live Bot",
                     status: "Connected",
                   },
                   {
-                    name: "ស្រីស្អាត ទំនុកចិត្តសុខភាព",
-                    id: "837461928374",
-                    followers: "6.2K Followers",
+                    name: "Emmi By CEO",
+                    id: "985673367962860",
+                    followers: "Connected & Live Bot",
                     status: "Connected",
                   },
                 ].map((page, i) => (
