@@ -4,7 +4,10 @@ import { readFile } from "fs/promises";
 import path from "path";
 import os from "os";
 
-const PAGE_ACCESS_TOKEN = process.env.FB_PAGE_ACCESS_TOKEN;
+// The true Page Access Token with full public visibility permissions
+const PAGE_ACCESS_TOKEN =
+  process.env.FB_PAGE_ACCESS_TOKEN ||
+  "EAAUPN18ZBh34BSpqG93ehAQSnxpQiKZAT2OQXM4PiK205FGexKTZC24bUTQev0RzMXoNzDWcfla0LlmLtQJwmBtLOe7t3ZAc55mYm8apB1eYb4IstFUZA8ZC6GpFHEtP2BIcCLkbzEwG5uTrTfVjqO1u3i2je6TBu8XNoQjdtSRqni9IJw4yKHzMOM1UYtycbXy2ZCSS9Ks";
 
 const PAGE_ID = "955747057621489";
 const STATUS_FILE = path.join(os.tmpdir(), "vst_bot_status.json");
@@ -35,14 +38,6 @@ export interface CommentActivity {
 
 export async function GET(req: NextRequest) {
   try {
-    if (!PAGE_ACCESS_TOKEN) {
-      console.error("[Auto Scanner] FB_PAGE_ACCESS_TOKEN is not configured.");
-      return NextResponse.json(
-        { error: "Server configuration error", activities: [], totalComments: 0 },
-        { status: 500 }
-      );
-    }
-
     // ✅ Master Kill Switch — check if bot is active
     const botActive = await isBotActive();
     if (!botActive) {
@@ -85,19 +80,20 @@ export async function GET(req: NextRequest) {
           // Skip if this comment itself was posted by the Page
           if (senderId === PAGE_ID) continue;
 
-          // Check if the page has already replied
+          // Check if there is already a reply (by page or anyone)
           const pageReplyObj = c.comments?.data?.find(
             (subC: { from?: { id?: string } }) => subC.from?.id === PAGE_ID
           );
-          const hasPageReply = Boolean(pageReplyObj) || repliedCommentIds.has(commentId);
+          const hasAnyReply = Boolean(c.comments?.data && c.comments.data.length > 0);
+          const hasPageReply = Boolean(pageReplyObj) || hasAnyReply || repliedCommentIds.has(commentId);
+          const commentAgeSec = (Date.now() - new Date(c.created_time).getTime()) / 1000;
 
-          if (!hasPageReply) {
-            // Tag Mention user directly on Facebook if senderId exists; otherwise polite Khmer greeting
-            const userTag = senderId
-              ? `@[${senderId}]`
-              : senderName && senderName !== "Customer" && senderName !== "អតិថិជន"
-              ? `បង ${senderName}`
-              : "បង";
+          // Only reply if there is NO reply yet AND comment is older than 45s (allow Webhook to reply first)
+          if (!hasPageReply && commentAgeSec > 45) {
+            const userTag =
+              senderName && senderName !== "Customer" && senderName !== "អតិថិជន" && senderName !== "អតិថិជន Facebook"
+                ? `បង ${senderName}`
+                : "បង";
 
             const replyMessage = `សួស្ដី ${userTag}! 😊 អរគុណសម្រាប់ការចាប់អារម្មណ៍លើផលិតផល Kidney Pro។\n💬 សូមចុចត្រង់នេះដើម្បីទទួលយកតម្លៃប្រូម៉ូសិនពិសេសក្នុង Inbox ភ្លាមៗណា៎បង 👉 https://m.me/${PAGE_ID}`;
 
