@@ -47,6 +47,88 @@ export default function VSTAssistantApp() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
 
+  // Facebook user & Multi-Page management state
+  const [currentUser, setCurrentUser] = useState<{
+    id?: string;
+    name?: string;
+    email?: string;
+    picture?: string | null;
+    loginType?: "admin" | "facebook";
+  }>({
+    name: "VST Super Admin",
+    loginType: "admin",
+  });
+
+  const [managedPages, setManagedPages] = useState<
+    Array<{
+      id: string;
+      name: string;
+      category?: string;
+      picture?: string | null;
+      isActive: boolean;
+    }>
+  >([
+    {
+      id: "955747057621489",
+      name: "Kidney Pro ឃីដនី ប្រូ",
+      category: "សុខភាព & សម្រស់ (Health/Beauty)",
+      isActive: true,
+    },
+    {
+      id: "101267342561819",
+      name: "Emmi អេមមី",
+      category: "ផលិតផលនារី (Women Care)",
+      isActive: true,
+    },
+    {
+      id: "985673367962860",
+      name: "Emmi By CEO",
+      category: "អាជីវកម្មផ្លូវការ (Official Brand)",
+      isActive: true,
+    },
+  ]);
+
+  const [isFbConnecting, setIsFbConnecting] = useState(false);
+
+  // Initialize Facebook JavaScript SDK
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if ((window as any).FB) return;
+
+      (window as any).fbAsyncInit = function () {
+        (window as any).FB.init({
+          appId: "1424105379104638",
+          cookie: true,
+          xfbml: true,
+          version: "v21.0",
+        });
+      };
+
+      const script = document.createElement("script");
+      script.id = "facebook-jssdk";
+      script.src = "https://connect.facebook.net/en_US/sdk.js";
+      script.async = true;
+      script.defer = true;
+      document.body.appendChild(script);
+    }
+  }, []);
+
+  const fetchPages = async () => {
+    try {
+      const res = await fetch("/api/pages");
+      const data = await res.json();
+      if (data.pages && Array.isArray(data.pages)) {
+        setManagedPages(data.pages);
+      }
+    } catch (e) {
+      console.error("Failed to load pages:", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchPages();
+  }, []);
+
   useEffect(() => {
     try {
       const savedLang = localStorage.getItem("vst_lang") as Language;
@@ -55,10 +137,17 @@ export default function VSTAssistantApp() {
       }
 
       // Check existing admin session (Remember Me)
-      const savedSession =
+      const rawSession =
         localStorage.getItem("vst_admin_session") ||
         sessionStorage.getItem("vst_admin_session");
-      if (savedSession) {
+      if (rawSession) {
+        const sessionData = JSON.parse(rawSession);
+        if (sessionData.user) {
+          setCurrentUser(sessionData.user);
+        }
+        if (sessionData.pages && Array.isArray(sessionData.pages)) {
+          setManagedPages(sessionData.pages);
+        }
         setIsLoggedIn(true);
       }
     } catch {}
@@ -86,6 +175,7 @@ export default function VSTAssistantApp() {
       const data = await res.json();
 
       if (data.success && data.token) {
+        setCurrentUser({ name: "VST Super Admin", loginType: "admin" });
         if (rememberMe) {
           localStorage.setItem("vst_admin_session", JSON.stringify(data));
         } else {
@@ -102,11 +192,86 @@ export default function VSTAssistantApp() {
     }
   };
 
+  const handleFacebookLogin = () => {
+    setIsFbConnecting(true);
+    setLoginError("");
+
+    if (!(window as any).FB) {
+      alert(
+        lang === "km"
+          ? "Facebook SDK កំពុងទាញយក... សូមរង់ចាំ ២ វិនាទី រួចចុចម្តងទៀត!"
+          : "Facebook SDK is initializing... Please try again in 2 seconds!"
+      );
+      setIsFbConnecting(false);
+      return;
+    }
+
+    (window as any).FB.login(
+      async (response: any) => {
+        if (response.authResponse && response.authResponse.accessToken) {
+          const userAccessToken = response.authResponse.accessToken;
+
+          try {
+            const apiRes = await fetch("/api/auth/facebook", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ accessToken: userAccessToken }),
+            });
+            const data = await apiRes.json();
+
+            if (data.success) {
+              if (data.user) {
+                setCurrentUser(data.user);
+              }
+              if (data.pages && Array.isArray(data.pages)) {
+                setManagedPages(data.pages);
+              }
+              localStorage.setItem("vst_admin_session", JSON.stringify(data));
+              setIsLoggedIn(true);
+            } else {
+              setLoginError(data.error || "Facebook Login failed");
+            }
+          } catch (err) {
+            console.error("Exchange token error:", err);
+            setLoginError("Failed to connect with Facebook server");
+          } finally {
+            setIsFbConnecting(false);
+          }
+        } else {
+          setIsFbConnecting(false);
+        }
+      },
+      {
+        scope:
+          "public_profile,pages_show_list,pages_messaging,pages_read_engagement,pages_manage_metadata",
+        return_scopes: true,
+      }
+    );
+  };
+
+  const handleTogglePage = async (pageId: string, currentStatus: boolean) => {
+    const newStatus = !currentStatus;
+    setManagedPages((prev) =>
+      prev.map((p) => (p.id === pageId ? { ...p, isActive: newStatus } : p))
+    );
+
+    try {
+      await fetch("/api/pages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pageId, isActive: newStatus }),
+      });
+    } catch (err) {
+      console.error("Failed to toggle page status:", err);
+    }
+  };
+
   const handleLogout = () => {
     try {
       localStorage.removeItem("vst_admin_session");
       sessionStorage.removeItem("vst_admin_session");
     } catch {}
+    setCurrentUser({ name: "VST Super Admin", loginType: "admin" });
     setIsLoggedIn(false);
   };
 
@@ -346,13 +511,34 @@ export default function VSTAssistantApp() {
             </p>
           </div>
 
-          {/* Error alert */}
-          {loginError && (
-            <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300 flex items-center gap-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-red-400 shrink-0" />
-              <span>{loginError}</span>
-            </div>
-          )}
+          {/* Facebook Login Button */}
+          <button
+            type="button"
+            onClick={handleFacebookLogin}
+            disabled={isFbConnecting}
+            className="flex w-full items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 py-3.5 px-4 font-semibold text-white shadow-lg shadow-blue-600/30 transition hover:from-blue-500 hover:to-indigo-500 disabled:opacity-60 mb-4"
+          >
+            {isFbConnecting ? (
+              <>
+                <RefreshCw className="h-5 w-5 animate-spin" />
+                <span>{lang === "km" ? "កំពុងភ្ជាប់ Facebook..." : "Connecting Facebook..."}</span>
+              </>
+            ) : (
+              <>
+                <svg className="h-5 w-5 fill-current" viewBox="0 0 24 24">
+                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                </svg>
+                <span>{t.login.fbLogin}</span>
+              </>
+            )}
+          </button>
+
+          <div className="relative my-4 flex items-center justify-center">
+            <div className="w-full border-t border-slate-700/60" />
+            <span className="absolute bg-[#09152b] px-3 text-xs text-slate-400">
+              {t.login.orAdmin}
+            </span>
+          </div>
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
@@ -528,19 +714,31 @@ export default function VSTAssistantApp() {
         {/* User profile */}
         <div className="border-t border-slate-800/80 p-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 font-bold text-white text-sm">
-                V
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-white">VST Super Admin</div>
-                <div className="text-[10px] text-cyan-400">{t.ownerAccount}</div>
+            <div className="flex items-center gap-2.5 min-w-0">
+              {currentUser.picture ? (
+                <img
+                  src={currentUser.picture}
+                  alt={currentUser.name || "User"}
+                  className="h-9 w-9 rounded-xl object-cover border border-cyan-400/40 shrink-0"
+                />
+              ) : (
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 font-bold text-white text-sm">
+                  {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : "V"}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-semibold text-white truncate">
+                  {currentUser.name || "VST Admin"}
+                </div>
+                <div className="text-[10px] text-cyan-400 truncate">
+                  {currentUser.loginType === "facebook" ? "Facebook Connected" : t.ownerAccount}
+                </div>
               </div>
             </div>
             <button
               onClick={handleLogout}
               title={t.logout}
-              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white shrink-0 ml-2"
             >
               <Power className="h-4 w-4" />
             </button>
@@ -993,62 +1191,114 @@ export default function VSTAssistantApp() {
           {/* TAB 3: PAGES */}
           {activeTab === "pages" && (
             <div className="max-w-4xl space-y-6">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h3 className="text-base font-bold text-white">
-                    Facebook Pages ទាំងអស់ដែលបានភ្ជាប់
+                    {t.pagesTab.title}
                   </h3>
                   <p className="text-xs text-slate-400">
-                    សមាជិកម្នាក់ៗអាចភ្ជាប់ Pages ជាច្រើនតាមរយៈ Facebook Login
+                    {t.pagesTab.subtitle}
                   </p>
                 </div>
-                <button className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-500 shadow-md">
+                <button
+                  onClick={handleFacebookLogin}
+                  disabled={isFbConnecting}
+                  className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2.5 text-xs font-semibold text-white hover:from-blue-500 hover:to-indigo-500 shadow-md transition disabled:opacity-60"
+                >
                   <Plus className="h-3.5 w-3.5" />
-                  <span>ភ្ជាប់ Page ថ្មី</span>
+                  <span>
+                    {isFbConnecting
+                      ? lang === "km"
+                        ? "កំពុងភ្ជាប់ Facebook..."
+                        : "Connecting..."
+                      : t.pagesTab.connectBtn}
+                  </span>
                 </button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {[
-                  {
-                    name: "Kidney Pro ឃីដនី ប្រូ",
-                    id: "955747057621489",
-                    followers: "Connected & Live Bot",
-                    status: "Connected",
-                  },
-                  {
-                    name: "Emmi អេមមី",
-                    id: "101267342561819",
-                    followers: "Connected & Live Bot",
-                    status: "Connected",
-                  },
-                  {
-                    name: "Emmi By CEO",
-                    id: "985673367962860",
-                    followers: "Connected & Live Bot",
-                    status: "Connected",
-                  },
-                ].map((page, i) => (
+                {managedPages.map((page, i) => (
                   <div
-                    key={i}
-                    className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 flex flex-col justify-between"
+                    key={page.id || i}
+                    className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 flex flex-col justify-between transition hover:border-slate-700/80 hover:bg-slate-900/60"
                   >
                     <div>
                       <div className="flex items-center justify-between">
-                        <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-400 border border-emerald-500/20">
-                          {page.status}
+                        <span
+                          className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold border ${
+                            page.isActive
+                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                              : "bg-slate-700/30 text-slate-400 border-slate-700/40"
+                          }`}
+                        >
+                          {page.isActive
+                            ? lang === "km"
+                              ? "● ដំណើរការ"
+                              : "● Active"
+                            : lang === "km"
+                            ? "○ បានផ្អាក"
+                            : "○ Paused"}
                         </span>
-                        <span className="text-[11px] text-slate-500">ID: {page.id}</span>
+                        <span className="text-[11px] text-slate-500 font-mono">
+                          ID: {page.id}
+                        </span>
                       </div>
-                      <h4 className="mt-3 font-bold text-white text-base">{page.name}</h4>
-                      <p className="text-xs text-slate-400 mt-1">{page.followers}</p>
+                      <div className="mt-3 flex items-center gap-3">
+                        {page.picture ? (
+                          <img
+                            src={page.picture}
+                            alt={page.name}
+                            className="h-10 w-10 rounded-xl object-cover border border-cyan-500/30"
+                          />
+                        ) : (
+                          <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center text-white font-bold text-sm">
+                            {page.name.charAt(0)}
+                          </div>
+                        )}
+                        <div>
+                          <h4 className="font-bold text-white text-sm">
+                            {page.name}
+                          </h4>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            {page.category || "Facebook Page"}
+                          </p>
+                        </div>
+                      </div>
                     </div>
 
                     <div className="mt-6 pt-4 border-t border-slate-800/80 flex items-center justify-between">
-                      <span className="text-xs text-cyan-400">Bot Reply: ON</span>
-                      <button className="text-xs text-slate-400 hover:text-red-400">
-                        ផ្តាច់ការភ្ជាប់
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-400">Bot:</span>
+                        <button
+                          onClick={() => handleTogglePage(page.id, page.isActive)}
+                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${
+                            page.isActive ? "bg-cyan-500" : "bg-slate-700"
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ${
+                              page.isActive ? "translate-x-4" : "translate-x-0"
+                            }`}
+                          />
+                        </button>
+                        <span
+                          className={`text-xs font-bold ${
+                            page.isActive ? "text-cyan-400" : "text-slate-500"
+                          }`}
+                        >
+                          {page.isActive ? "ON" : "OFF"}
+                        </span>
+                      </div>
+
+                      <a
+                        href={`https://facebook.com/${page.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs text-cyan-400 hover:underline flex items-center gap-1"
+                      >
+                        <span>{lang === "km" ? "មើលលើ Facebook" : "View Facebook"}</span>
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
                     </div>
                   </div>
                 ))}
