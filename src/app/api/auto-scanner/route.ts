@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { replyToComment } from "@/lib/facebook";
+import { supabase } from "@/lib/supabase";
 import { readFile } from "fs/promises";
 import path from "path";
 import os from "os";
 
-// The true Page Access Token with full public visibility permissions
 const PAGE_ACCESS_TOKEN =
   process.env.FB_PAGE_ACCESS_TOKEN ||
   "EAAUPN18ZBh34BSpqG93ehAQSnxpQiKZAT2OQXM4PiK205FGexKTZC24bUTQev0RzMXoNzDWcfla0LlmLtQJwmBtLOe7t3ZAc55mYm8apB1eYb4IstFUZA8ZC6GpFHEtP2BIcCLkbzEwG5uTrTfVjqO1u3i2je6TBu8XNoQjdtSRqni9IJw4yKHzMOM1UYtycbXy2ZCSS9Ks";
@@ -13,6 +13,20 @@ const PAGE_ID = "955747057621489";
 const STATUS_FILE = path.join(os.tmpdir(), "vst_bot_status.json");
 
 async function isBotActive(): Promise<boolean> {
+  try {
+    const { data } = await supabase
+      .from("bot_settings")
+      .select("is_active")
+      .eq("id", "default")
+      .single();
+
+    if (data) {
+      return data.is_active !== false;
+    }
+  } catch (e) {
+    console.error("Supabase isBotActive error in scanner:", e);
+  }
+
   try {
     const data = await readFile(STATUS_FILE, "utf-8");
     const json = JSON.parse(data);
@@ -38,7 +52,6 @@ export interface CommentActivity {
 
 export async function GET(req: NextRequest) {
   try {
-    // ✅ Master Kill Switch — check if bot is active
     const botActive = await isBotActive();
     if (!botActive) {
       return NextResponse.json({
@@ -77,16 +90,35 @@ export async function GET(req: NextRequest) {
           const senderName = c.from?.name || "អតិថិជន Facebook";
           const messageText = c.message || "";
 
-          // Skip if this comment itself was posted by the Page
+          // Skip if this comment was posted by the Page itself
           if (senderId === PAGE_ID) continue;
 
-          // Check if there is already a reply (by page or anyone)
+          // Check if there is already a reply
           const pageReplyObj = c.comments?.data?.find(
             (subC: { from?: { id?: string } }) => subC.from?.id === PAGE_ID
           );
           const hasAnyReply = Boolean(c.comments?.data && c.comments.data.length > 0);
           const hasPageReply = Boolean(pageReplyObj) || hasAnyReply || repliedCommentIds.has(commentId);
           const commentAgeSec = (Date.now() - new Date(c.created_time).getTime()) / 1000;
+
+          // Sync lead into Supabase customers table if sender is known and valid
+          if (senderName && senderName !== "Customer" && senderName !== "អតិថិជន" && senderName !== "អតិថិជន Facebook") {
+            try {
+              if (senderId) {
+                await supabase.from("customers").upsert(
+                  {
+                    fb_user_id: senderId,
+                    name: senderName,
+                    source_page_id: PAGE_ID,
+                    last_activity_at: c.created_time || new Date().toISOString(),
+                  },
+                  { onConflict: "fb_user_id" }
+                );
+              }
+            } catch (err) {
+              // Non-blocking sync
+            }
+          }
 
           // Only reply if there is NO reply yet AND comment is older than 45s (allow Webhook to reply first)
           if (!hasPageReply && commentAgeSec > 45) {
@@ -111,6 +143,22 @@ export async function GET(req: NextRequest) {
                 message: messageText,
                 replyText: replyMessage,
               });
+
+              // Save to Supabase
+              try {
+                await supabase.from("comments").upsert({
+                  id: commentId,
+                  post_id: post.id,
+                  fb_user_id: senderId || null,
+                  sender_name: senderName,
+                  message: messageText,
+                  reply_message: replyMessage,
+                  created_time: c.created_time,
+                  permalink: post.permalink_url,
+                });
+              } catch (dbErr) {
+                console.error("Supabase comment log error:", dbErr);
+              }
 
               activities.push({
                 commentId,
