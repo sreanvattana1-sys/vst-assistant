@@ -27,6 +27,8 @@ import {
   HelpCircle,
   X,
   Globe,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { translations, Language } from "@/lib/i18n";
 
@@ -36,13 +38,31 @@ export default function VSTAssistantApp() {
   const [botActive, setBotActive] = useState(true);
   const [lang, setLang] = useState<Language>("km");
 
+  // Authentication state
+  const [loginEmail, setLoginEmail] = useState("admin@vst.com");
+  const [loginPassword, setLoginPassword] = useState("vst@2026");
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
+  const [loginError, setLoginError] = useState("");
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
+
   useEffect(() => {
     try {
       const savedLang = localStorage.getItem("vst_lang") as Language;
       if (savedLang === "km" || savedLang === "en") {
         setLang(savedLang);
       }
+
+      // Check existing admin session (Remember Me)
+      const savedSession =
+        localStorage.getItem("vst_admin_session") ||
+        sessionStorage.getItem("vst_admin_session");
+      if (savedSession) {
+        setIsLoggedIn(true);
+      }
     } catch {}
+    setIsCheckingSession(false);
   }, []);
 
   const handleToggleLang = (newLang: Language) => {
@@ -50,6 +70,44 @@ export default function VSTAssistantApp() {
     try {
       localStorage.setItem("vst_lang", newLang);
     } catch {}
+  };
+
+  const handleLogin = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setLoginError("");
+    setIsLoggingIn(true);
+
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: loginEmail, password: loginPassword }),
+      });
+      const data = await res.json();
+
+      if (data.success && data.token) {
+        if (rememberMe) {
+          localStorage.setItem("vst_admin_session", JSON.stringify(data));
+        } else {
+          sessionStorage.setItem("vst_admin_session", JSON.stringify(data));
+        }
+        setIsLoggedIn(true);
+      } else {
+        setLoginError(t.login.invalidCredentials);
+      }
+    } catch (err) {
+      setLoginError(t.login.invalidCredentials);
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleLogout = () => {
+    try {
+      localStorage.removeItem("vst_admin_session");
+      sessionStorage.removeItem("vst_admin_session");
+    } catch {}
+    setIsLoggedIn(false);
   };
 
   const t = translations[lang];
@@ -248,6 +306,17 @@ export default function VSTAssistantApp() {
 
   // 1. LOGIN SCREEN
   if (!isLoggedIn) {
+    if (isCheckingSession) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-[#030914]">
+          <div className="flex items-center gap-2 text-cyan-400">
+            <RefreshCw className="h-5 w-5 animate-spin" />
+            <span className="text-sm font-medium">Checking session...</span>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-[#030914] via-[#061730] to-[#0c2f60] p-4 overflow-hidden">
         {/* Language switcher on top-right */}
@@ -259,8 +328,8 @@ export default function VSTAssistantApp() {
         <div className="absolute -top-32 -right-32 h-96 w-96 rounded-full bg-cyan-500/10 blur-3xl" />
         <div className="absolute -bottom-32 -left-32 h-96 w-96 rounded-full bg-blue-600/15 blur-3xl" />
 
-        <div className="relative w-full max-w-md rounded-3xl border border-white/10 bg-slate-900/60 p-8 shadow-2xl backdrop-blur-2xl">
-          <div className="mb-8 text-center">
+        <div className="relative w-full max-w-md rounded-3xl border border-white/10 bg-slate-900/70 p-8 shadow-2xl backdrop-blur-2xl">
+          <div className="mb-6 text-center">
             <div className="relative mx-auto mb-4 h-24 w-24 overflow-hidden rounded-full border-2 border-cyan-400/40 p-1 shadow-lg shadow-cyan-500/20">
               <Image
                 src="/vst-logo.jpg"
@@ -277,32 +346,26 @@ export default function VSTAssistantApp() {
             </p>
           </div>
 
-          <div className="space-y-4">
-            <button
-              onClick={() => setIsLoggedIn(true)}
-              className="flex w-full items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 py-3.5 px-4 font-semibold text-white shadow-lg shadow-blue-600/30 transition hover:from-blue-500 hover:to-cyan-500 hover:shadow-cyan-500/40"
-            >
-              <svg className="h-5 w-5 fill-current" viewBox="0 0 24 24">
-                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-              </svg>
-              <span>{t.login.fbLogin}</span>
-            </button>
-
-            <div className="relative my-4 flex items-center justify-center">
-              <div className="w-full border-t border-slate-700/60" />
-              <span className="absolute bg-[#09152b] px-3 text-xs text-slate-400">
-                {t.login.orAdmin}
-              </span>
+          {/* Error alert */}
+          {loginError && (
+            <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300 flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-red-400 shrink-0" />
+              <span>{loginError}</span>
             </div>
+          )}
 
+          <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1.5">
                 {t.login.emailLabel}
               </label>
               <input
                 type="text"
-                defaultValue="admin@vst.com"
-                className="w-full rounded-xl border border-slate-700/60 bg-slate-800/50 px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
+                value={loginEmail}
+                onChange={(e) => setLoginEmail(e.target.value)}
+                placeholder={t.login.emailPlaceholder}
+                required
+                className="w-full rounded-xl border border-slate-700/60 bg-slate-800/50 px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition"
               />
             </div>
 
@@ -310,22 +373,64 @@ export default function VSTAssistantApp() {
               <label className="block text-xs font-medium text-slate-300 mb-1.5">
                 {t.login.passLabel}
               </label>
-              <input
-                type="password"
-                defaultValue="••••••••"
-                className="w-full rounded-xl border border-slate-700/60 bg-slate-800/50 px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  placeholder={t.login.passPlaceholder}
+                  required
+                  className="w-full rounded-xl border border-slate-700/60 bg-slate-800/50 px-4 py-2.5 pr-10 text-sm text-white placeholder-slate-500 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Remember Me Checkbox */}
+            <div className="flex items-center justify-between text-xs">
+              <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white select-none">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="rounded border-slate-700 bg-slate-800 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer h-4 w-4"
+                />
+                <span>{t.login.rememberMe}</span>
+              </label>
             </div>
 
             <button
-              onClick={() => setIsLoggedIn(true)}
-              className="w-full rounded-xl border border-slate-700 bg-slate-800/80 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-700"
+              type="submit"
+              disabled={isLoggingIn}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 py-3 px-4 font-semibold text-white shadow-lg shadow-cyan-500/20 transition hover:from-blue-500 hover:to-cyan-500 disabled:opacity-50"
             >
-              {t.login.signInBtn}
+              {isLoggingIn ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <span>{t.login.signingIn}</span>
+                </>
+              ) : (
+                <span>{t.login.signInBtn}</span>
+              )}
             </button>
+          </form>
+
+          {/* Quick Default Creds Hint */}
+          <div className="mt-4 rounded-xl border border-slate-800/80 bg-slate-800/30 p-2.5 text-center text-[11px] text-slate-400">
+            <span>🔑 {t.login.defaultHint}</span>
           </div>
 
-          <div className="mt-8 text-center text-xs text-slate-500">
+          <div className="mt-6 text-center text-xs text-slate-500">
             {t.login.copyright}
           </div>
         </div>
@@ -433,7 +538,7 @@ export default function VSTAssistantApp() {
               </div>
             </div>
             <button
-              onClick={() => setIsLoggedIn(false)}
+              onClick={handleLogout}
               title={t.logout}
               className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
             >
