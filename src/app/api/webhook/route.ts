@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { replyToComment, sendMessengerMessage } from "@/lib/facebook";
+import { replyToComment, sendPrivateReply, sendMessengerMessage } from "@/lib/facebook";
 import { supabase } from "@/lib/supabase";
 import { readFile } from "fs/promises";
 import path from "path";
@@ -176,8 +176,32 @@ export async function POST(req: NextRequest) {
                   commentId: commentId,
                   message: commentText,
                 });
+                console.log(`[Webhook] Reply sent for comment ${commentId}:`, replyRes);
 
-                // B. Save Comment to Supabase
+                // B. Auto Private Reply (DM into Customer Messenger)
+                if (settings.autoDm) {
+                  try {
+                    const displayName =
+                      senderName && senderName !== "Customer" && senderName !== "អតិថិជន" && senderName !== "អតិថិជន Facebook"
+                        ? senderName
+                        : "បង";
+                    const dmTextTemplate =
+                      settings.dmTemplate ||
+                      "សួស្ដីបង {name}! 🌸 អរគុណដែលបាន comment លើទំព័រយើងខ្ញុំ។ តើបងចង់ដឹងព័ត៌មានលម្អិត ឬតម្លៃផលិតផលដែរទេ? ខ្ញុំអាចជួយផ្ដល់ការប្រឹក្សាជូនបងបានភ្លាមៗណា! 💬✨";
+                    const dmMessage = dmTextTemplate.replace(/{name}/g, displayName);
+
+                    const dmRes = await sendPrivateReply({
+                      pageAccessToken: PAGE_ACCESS_TOKEN,
+                      commentId: commentId,
+                      message: dmMessage,
+                    });
+                    console.log(`[Webhook] Private Reply (DM) sent for comment ${commentId}:`, dmRes);
+                  } catch (dmErr) {
+                    console.error(`[Webhook] Private Reply failed for comment ${commentId}:`, dmErr);
+                  }
+                }
+
+                // C. Save Comment to Supabase
                 try {
                   await supabase.from("comments").upsert({
                     id: commentId,

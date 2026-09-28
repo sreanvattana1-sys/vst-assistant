@@ -26,12 +26,33 @@ import {
   MessageCircle,
   HelpCircle,
   X,
+  Globe,
 } from "lucide-react";
+import { translations, Language } from "@/lib/i18n";
 
 export default function VSTAssistantApp() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [botActive, setBotActive] = useState(true);
+  const [lang, setLang] = useState<Language>("km");
+
+  useEffect(() => {
+    try {
+      const savedLang = localStorage.getItem("vst_lang") as Language;
+      if (savedLang === "km" || savedLang === "en") {
+        setLang(savedLang);
+      }
+    } catch {}
+  }, []);
+
+  const handleToggleLang = (newLang: Language) => {
+    setLang(newLang);
+    try {
+      localStorage.setItem("vst_lang", newLang);
+    } catch {}
+  };
+
+  const t = translations[lang];
 
   // Bot configuration state
   const [commentKeyword, setCommentKeyword] = useState("តម្លៃ, price, ប៉ុន្មាន, order");
@@ -197,10 +218,43 @@ export default function VSTAssistantApp() {
     }
   };
 
+  // Language Switcher Component
+  const LangSwitcher = () => (
+    <div className="flex items-center rounded-xl border border-slate-700/60 bg-slate-800/60 p-1 text-xs shadow-inner">
+      <button
+        onClick={() => handleToggleLang("km")}
+        className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-semibold transition ${
+          lang === "km"
+            ? "bg-gradient-to-r from-blue-600/40 to-cyan-500/30 text-cyan-300 border border-cyan-500/40 shadow-sm"
+            : "text-slate-400 hover:text-slate-200"
+        }`}
+      >
+        <span>🇰🇭</span>
+        <span>ខ្មែរ</span>
+      </button>
+      <button
+        onClick={() => handleToggleLang("en")}
+        className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-semibold transition ${
+          lang === "en"
+            ? "bg-gradient-to-r from-blue-600/40 to-cyan-500/30 text-cyan-300 border border-cyan-500/40 shadow-sm"
+            : "text-slate-400 hover:text-slate-200"
+        }`}
+      >
+        <span>🇬🇧</span>
+        <span>English</span>
+      </button>
+    </div>
+  );
+
   // 1. LOGIN SCREEN
   if (!isLoggedIn) {
     return (
       <div className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-[#030914] via-[#061730] to-[#0c2f60] p-4 overflow-hidden">
+        {/* Language switcher on top-right */}
+        <div className="absolute top-6 right-6 z-20">
+          <LangSwitcher />
+        </div>
+
         {/* Glowing background circles */}
         <div className="absolute -top-32 -right-32 h-96 w-96 rounded-full bg-cyan-500/10 blur-3xl" />
         <div className="absolute -bottom-32 -left-32 h-96 w-96 rounded-full bg-blue-600/15 blur-3xl" />
@@ -216,10 +270,10 @@ export default function VSTAssistantApp() {
               />
             </div>
             <h1 className="text-2xl font-extrabold tracking-tight text-white">
-              VST Assistant
+              {t.login.title}
             </h1>
             <p className="mt-1 text-sm text-cyan-200/70">
-              Facebook Automation & Page Management
+              {t.login.subtitle}
             </p>
           </div>
 
@@ -231,19 +285,19 @@ export default function VSTAssistantApp() {
               <svg className="h-5 w-5 fill-current" viewBox="0 0 24 24">
                 <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
               </svg>
-              <span>ចូលប្រើដោយ Facebook Login</span>
+              <span>{t.login.fbLogin}</span>
             </button>
 
             <div className="relative my-4 flex items-center justify-center">
               <div className="w-full border-t border-slate-700/60" />
               <span className="absolute bg-[#09152b] px-3 text-xs text-slate-400">
-                ឬប្រើ Admin Account
+                {t.login.orAdmin}
               </span>
             </div>
 
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                Email / លេខសម្គាល់
+                {t.login.emailLabel}
               </label>
               <input
                 type="text"
@@ -254,7 +308,7 @@ export default function VSTAssistantApp() {
 
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                Password
+                {t.login.passLabel}
               </label>
               <input
                 type="password"
@@ -267,12 +321,12 @@ export default function VSTAssistantApp() {
               onClick={() => setIsLoggedIn(true)}
               className="w-full rounded-xl border border-slate-700 bg-slate-800/80 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-700"
             >
-              Sign In with Password
+              {t.login.signInBtn}
             </button>
           </div>
 
           <div className="mt-8 text-center text-xs text-slate-500">
-            © 2026 VST Assistant — ដំណោះស្រាយស្វ័យប្រវត្តិកម្មអាជីវកម្ម
+            {t.login.copyright}
           </div>
         </div>
       </div>
@@ -296,11 +350,11 @@ export default function VSTAssistantApp() {
           </div>
           <div>
             <h2 className="text-base font-bold text-white tracking-wide">
-              VST Assistant
+              {t.brandName}
             </h2>
             <div className="flex items-center gap-1.5 text-[11px] text-cyan-400">
               <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse" />
-              <span>Phase 1 Active</span>
+              <span>{t.phaseBadge}</span>
             </div>
           </div>
         </div>
@@ -308,11 +362,11 @@ export default function VSTAssistantApp() {
         {/* Navigation */}
         <nav className="flex-1 space-y-1 p-3">
           {[
-            { id: "dashboard", label: "ផ្ទាំងគ្រប់គ្រង (Dashboard)", icon: LayoutDashboard },
-            { id: "bot", label: "ការកំណត់ Bot (Bot Settings)", icon: Bot },
-            { id: "inbox", label: "ប្រអប់សារ (Inbox)", icon: MessageSquare, badge: "3" },
-            { id: "customers", label: "អតិថិជន (Customers)", icon: Users },
-            { id: "pages", label: "Facebook Pages", icon: FileText },
+            { id: "dashboard", label: t.nav.dashboard, icon: LayoutDashboard },
+            { id: "bot", label: t.nav.botSettings, icon: Bot },
+            { id: "inbox", label: t.nav.inbox, icon: MessageSquare, badge: "3" },
+            { id: "customers", label: t.nav.customers, icon: Users },
+            { id: "pages", label: t.nav.pages, icon: FileText },
           ].map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -340,12 +394,12 @@ export default function VSTAssistantApp() {
           })}
 
           <div className="pt-4 pb-1 px-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            Admin Management
+            {t.nav.adminHeader}
           </div>
 
           {[
-            { id: "admin", label: "Admin & Members", icon: ShieldCheck },
-            { id: "reports", label: "របាយការណ៍ (Reports)", icon: TrendingUp },
+            { id: "admin", label: t.nav.admin, icon: ShieldCheck },
+            { id: "reports", label: t.nav.reports, icon: TrendingUp },
           ].map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -375,12 +429,12 @@ export default function VSTAssistantApp() {
               </div>
               <div>
                 <div className="text-xs font-semibold text-white">VST Super Admin</div>
-                <div className="text-[10px] text-cyan-400">Owner Account</div>
+                <div className="text-[10px] text-cyan-400">{t.ownerAccount}</div>
               </div>
             </div>
             <button
               onClick={() => setIsLoggedIn(false)}
-              title="Logout"
+              title={t.logout}
               className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
             >
               <Power className="h-4 w-4" />
@@ -395,20 +449,17 @@ export default function VSTAssistantApp() {
         <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-800/80 bg-[#060c18]/80 px-8 backdrop-blur-md">
           <div className="flex items-center gap-3">
             <h1 className="text-lg font-bold text-white capitalize">
-              {activeTab === "dashboard" && "ផ្ទាំងគ្រប់គ្រងទូទៅ (Dashboard Overview)"}
-              {activeTab === "bot" && "ការកំណត់មុខងារ Bot & Auto-Reply"}
-              {activeTab === "inbox" && "ប្រអប់សារ & ការសន្ទនាផ្ទាល់"}
-              {activeTab === "customers" && "គ្រប់គ្រងអតិថិជន (Customer CRM)"}
-              {activeTab === "pages" && "Facebook Pages ដែលបានភ្ជាប់"}
-              {activeTab === "admin" && "គ្រប់គ្រងសមាជិក (Owner Panel)"}
-              {activeTab === "reports" && "ស្ថិតិ & របាយការណ៍លក់"}
+              {t.headerTitles[activeTab as keyof typeof t.headerTitles] || t.headerTitles.dashboard}
             </h1>
           </div>
 
           <div className="flex items-center gap-4">
+            {/* Language Switcher */}
+            <LangSwitcher />
+
             {/* Global Bot Toggle */}
             <div className="flex items-center gap-2.5 rounded-full border border-slate-700/60 bg-slate-800/40 px-3 py-1.5 text-xs font-medium">
-              <span className="text-slate-400">Bot ដំណើរការ៖</span>
+              <span className="text-slate-400">{t.botStatusLabel}</span>
               <button
                 onClick={async () => {
                   const newState = !botActive;
@@ -434,7 +485,7 @@ export default function VSTAssistantApp() {
                 />
               </button>
               <span className={botActive ? "text-cyan-400 font-bold" : "text-slate-500"}>
-                {botActive ? "ON" : "OFF"}
+                {botActive ? t.on : t.off}
               </span>
             </div>
 
@@ -733,10 +784,10 @@ export default function VSTAssistantApp() {
                 <div className="flex items-center justify-between pb-4 border-b border-slate-800">
                   <div>
                     <h3 className="text-base font-bold text-white">
-                      💬 កំណត់ការតប Comment ស្វ័យប្រវត្តិ (Auto Comment Reply)
+                      💬 {t.settings.title}
                     </h3>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      នៅពេលមានអតិថិជន comment សួរលើ Post ណាមួយ Bot នឹងតប Comment ភ្លាមៗ
+                      {t.settings.subtitle}
                     </p>
                   </div>
                   <span className="rounded-full bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-400 border border-cyan-500/20">
@@ -747,23 +798,23 @@ export default function VSTAssistantApp() {
                 <div className="mt-5 space-y-4">
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                      ពាក្យគន្លឹះចាប់ផ្ដើមតប (Keywords Trigger)
+                      {t.settings.keywordsLabel}
                     </label>
                     <input
                       type="text"
                       value={commentKeyword}
                       onChange={(e) => setCommentKeyword(e.target.value)}
-                      placeholder="តម្លៃ, price, ប៉ុន្មាន, order..."
+                      placeholder={t.settings.keywordsPlaceholder}
                       className="w-full rounded-xl border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-cyan-500"
                     />
                     <p className="text-[11px] text-slate-500 mt-1">
-                      ប្រសិនបើទុកទទេ Bot នឹងតបរាល់ Comment ទាំងអស់ដោយស្វ័យប្រវត្តិ។
+                      {t.settings.keywordsHint}
                     </p>
                   </div>
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                      សារតប Comment (Comment Reply Text)
+                      {t.settings.replyTemplateLabel}
                     </label>
                     <textarea
                       rows={3}
@@ -771,16 +822,19 @@ export default function VSTAssistantApp() {
                       onChange={(e) => setCommentReplyTemplate(e.target.value)}
                       className="w-full rounded-xl border border-slate-700 bg-slate-800/60 p-4 text-sm text-white placeholder-slate-500 outline-none focus:border-cyan-500"
                     />
+                    <p className="text-[11px] text-cyan-400/80 mt-1">
+                      {t.settings.tagHint}
+                    </p>
                   </div>
 
                   {/* Auto DM checkbox */}
                   <div className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-800/30 p-4">
                     <div>
                       <div className="text-sm font-semibold text-white">
-                        📩 ផ្ញើសារ Private Message (DM) ទៅ Inbox អតិថិជនភ្លាមៗ
+                        {t.settings.autoDmTitle}
                       </div>
                       <div className="text-xs text-slate-400 mt-0.5">
-                        នៅពេលអតិថិជន comment ក្រៅពីតប comment ហើយ Bot នឹងផ្ញើសារចូល Inbox បន្ថែម
+                        {t.settings.autoDmDesc}
                       </div>
                     </div>
                     <button
@@ -800,7 +854,7 @@ export default function VSTAssistantApp() {
                   {autoSendDm && (
                     <div className="pl-4 border-l-2 border-cyan-500/40">
                       <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                        សារស្វាគមន៍ផ្ញើចូល Inbox (Private Message Template)
+                        {t.settings.dmTemplateLabel}
                       </label>
                       <textarea
                         rows={3}
@@ -816,13 +870,13 @@ export default function VSTAssistantApp() {
                       onClick={handleSaveBotSettings}
                       className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-cyan-500/20 hover:from-blue-500 hover:to-cyan-500"
                     >
-                      <span>រក្សាទុកការកំណត់</span>
+                      <span>{t.settings.saveBtn}</span>
                     </button>
 
                     {savedSuccess && (
                       <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
                         <CheckCircle2 className="h-4 w-4" />
-                        <span>បានរក្សាទុកដោយជោគជ័យ!</span>
+                        <span>{t.savedSuccess}</span>
                       </span>
                     )}
                   </div>
@@ -956,14 +1010,14 @@ export default function VSTAssistantApp() {
                   <div>
                     <div className="flex items-center gap-3">
                       <h3 className="text-base font-bold text-white">
-                        👥 បញ្ជីអតិថិជន និង Leads ពី Facebook (Supabase CRM)
+                        👥 {t.crm.title}
                       </h3>
                       <span className="rounded-full bg-cyan-500/10 px-2.5 py-0.5 text-xs font-semibold text-cyan-400 border border-cyan-500/20">
-                        {customersList.length} នាក់
+                        {customersList.length} {lang === "km" ? "នាក់" : "Leads"}
                       </span>
                     </div>
                     <p className="text-xs text-slate-400 mt-1">
-                      អតិថិជនទាំងអស់ដែលបាន Comment លើ Page ត្រូវបានកត់ត្រាទុកក្នុង Database ដោយស្វ័យប្រវត្តិ
+                      {t.crm.subtitle}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
@@ -973,7 +1027,7 @@ export default function VSTAssistantApp() {
                       className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/80 px-4 py-2 text-xs font-medium text-slate-300 hover:bg-slate-700 transition"
                     >
                       <RefreshCw className={`h-3.5 w-3.5 ${isLoadingCustomers ? "animate-spin text-cyan-400" : ""}`} />
-                      <span>{isLoadingCustomers ? "កំពុងទាញ..." : "ផ្ទុកឡើងវិញ"}</span>
+                      <span>{isLoadingCustomers ? t.saving : t.crm.refreshBtn}</span>
                     </button>
                   </div>
                 </div>
@@ -981,14 +1035,16 @@ export default function VSTAssistantApp() {
                 {isLoadingCustomers ? (
                   <div className="py-12 text-center text-slate-400 text-xs">
                     <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2 text-cyan-400" />
-                    កំពុងទាញទិន្នន័យពី Supabase...
+                    {t.crm.loading}
                   </div>
                 ) : customersList.length === 0 ? (
                   <div className="py-12 text-center">
                     <Users className="h-10 w-10 text-slate-600 mx-auto mb-3" />
-                    <p className="text-sm font-medium text-slate-300">មិនទាន់មានទិន្នន័យអតិថិជនថ្មីនៅឡើយទេ</p>
+                    <p className="text-sm font-medium text-slate-300">{t.crm.noData}</p>
                     <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                      នៅពេលមានអតិថិជន Comment លើ Page ប្រព័ន្ធ Bot នឹងកត់ត្រាឈ្មោះ និងព័ត៌មានរបស់ពួកគាត់ចូលក្នុងតារាងនេះដោយស្វ័យប្រវត្តិ!
+                      {lang === "km"
+                        ? "នៅពេលមានអតិថិជន Comment លើ Page ប្រព័ន្ធ Bot នឹងកត់ត្រាឈ្មោះ និងព័ត៌មានរបស់ពួកគាត់ចូលក្នុងតារាងនេះដោយស្វ័យប្រវត្តិ!"
+                        : "Whenever customers comment on your Facebook posts, the bot will automatically capture their profiles and display them here!"}
                     </p>
                   </div>
                 ) : (
@@ -996,12 +1052,12 @@ export default function VSTAssistantApp() {
                     <table className="w-full text-left text-xs text-slate-300">
                       <thead className="bg-slate-800/60 text-slate-400 uppercase text-[10px]">
                         <tr>
-                          <th className="p-3.5">ឈ្មោះអតិថិជន</th>
-                          <th className="p-3.5">Facebook ID</th>
-                          <th className="p-3.5">ចំនួន Comment</th>
-                          <th className="p-3.5">ស្ថានភាព</th>
-                          <th className="p-3.5">សកម្មភាពចុងក្រោយ</th>
-                          <th className="p-3.5 text-right">សកម្មភាព</th>
+                          <th className="p-3.5">{t.crm.colName}</th>
+                          <th className="p-3.5">{t.crm.colFbId}</th>
+                          <th className="p-3.5">{t.crm.colComments}</th>
+                          <th className="p-3.5">{t.crm.colStatus}</th>
+                          <th className="p-3.5">{t.crm.colLastActivity}</th>
+                          <th className="p-3.5 text-right">{t.crm.colActions}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800">
@@ -1018,18 +1074,18 @@ export default function VSTAssistantApp() {
                             </td>
                             <td className="p-3.5">
                               <span className="rounded-md bg-cyan-500/10 px-2 py-0.5 text-cyan-300 font-medium">
-                                {c.total_comments || 1} ដង
+                                {c.total_comments || 1} {lang === "km" ? "ដង" : "times"}
                               </span>
                             </td>
                             <td className="p-3.5">
                               <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400 border border-emerald-500/20">
-                                {c.status === "new" ? "អតិថិជនថ្មី" : c.status || "Lead"}
+                                {c.status === "new" ? t.crm.statusNew : c.status || "Lead"}
                               </span>
                             </td>
                             <td className="p-3.5 text-slate-400 text-[11px]">
                               {c.last_activity_at
-                                ? new Date(c.last_activity_at).toLocaleString("km-KH")
-                                : "ថ្មីៗនេះ"}
+                                ? new Date(c.last_activity_at).toLocaleString(lang === "km" ? "km-KH" : "en-US")
+                                : "Recent"}
                             </td>
                             <td className="p-3.5 text-right">
                               <a
@@ -1039,7 +1095,7 @@ export default function VSTAssistantApp() {
                                 className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600/30 hover:bg-blue-600/50 border border-blue-500/30 px-3 py-1 text-xs text-blue-300 transition"
                               >
                                 <MessageSquare className="h-3 w-3" />
-                                <span>ឆាត Inbox</span>
+                                <span>{t.crm.chatWithCustomer}</span>
                               </a>
                             </td>
                           </tr>

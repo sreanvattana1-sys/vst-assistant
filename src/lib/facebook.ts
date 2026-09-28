@@ -34,12 +34,52 @@ export async function replyToComment({
 /**
  * Send a Private Message (DM) to customer via Messenger
  */
+export interface FBPrivateReplyOptions {
+  pageAccessToken: string;
+  commentId: string;
+  message: string;
+}
+
+/**
+ * Send a Private Reply directly into the commenter's Messenger inbox
+ * using Facebook's Send API with recipient.comment_id
+ */
+export async function sendPrivateReply({
+  pageAccessToken,
+  commentId,
+  message,
+}: FBPrivateReplyOptions) {
+  try {
+    const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${pageAccessToken}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recipient: {
+          comment_id: commentId,
+        },
+        message: {
+          text: message,
+        },
+      }),
+    });
+    const data = await res.json();
+    return data;
+  } catch (error) {
+    console.error("sendPrivateReply fetch error:", error);
+    return { error: String(error) };
+  }
+}
+
+/**
+ * Send a Private Message (DM) to customer via Messenger PSID
+ */
 export async function sendMessengerMessage({
   pageAccessToken,
   recipientId,
   message,
 }: FBPrivateMessageOptions) {
-  const url = `https://graph.facebook.com/v19.0/me/messages?access_token=${pageAccessToken}`;
+  const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${pageAccessToken}`;
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

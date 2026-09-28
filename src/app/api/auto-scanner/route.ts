@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { replyToComment } from "@/lib/facebook";
+import { replyToComment, sendPrivateReply } from "@/lib/facebook";
 import { supabase } from "@/lib/supabase";
 import { readFile } from "fs/promises";
 import path from "path";
@@ -12,28 +12,26 @@ const PAGE_ACCESS_TOKEN =
 const PAGE_ID = "955747057621489";
 const STATUS_FILE = path.join(os.tmpdir(), "vst_bot_status.json");
 
-async function isBotActive(): Promise<boolean> {
+async function getScannerSettings(): Promise<{ isActive: boolean; autoDm: boolean; dmTemplate: string }> {
   try {
     const { data } = await supabase
       .from("bot_settings")
-      .select("is_active")
+      .select("is_active, auto_dm_enabled, dm_template")
       .eq("id", "default")
       .single();
 
     if (data) {
-      return data.is_active !== false;
+      return {
+        isActive: data.is_active !== false,
+        autoDm: data.auto_dm_enabled !== false,
+        dmTemplate: data.dm_template || "",
+      };
     }
   } catch (e) {
-    console.error("Supabase isBotActive error in scanner:", e);
+    console.error("Supabase getScannerSettings error in scanner:", e);
   }
 
-  try {
-    const data = await readFile(STATUS_FILE, "utf-8");
-    const json = JSON.parse(data);
-    return json.active !== false;
-  } catch {
-    return true;
-  }
+  return { isActive: true, autoDm: true, dmTemplate: "" };
 }
 
 const repliedCommentIds = new Set<string>();
@@ -52,8 +50,8 @@ export interface CommentActivity {
 
 export async function GET(req: NextRequest) {
   try {
-    const botActive = await isBotActive();
-    if (!botActive) {
+    const botSettings = await getScannerSettings();
+    if (!botSettings.isActive) {
       return NextResponse.json({
         status: "BOT_PAUSED",
         message: "Bot is currently paused",
@@ -143,6 +141,23 @@ export async function GET(req: NextRequest) {
                 message: messageText,
                 replyText: replyMessage,
               });
+
+              // Send Private Reply (DM into Customer Messenger)
+              if (botSettings.autoDm) {
+                try {
+                  const dmTextTemplate =
+                    botSettings.dmTemplate ||
+                    "សួស្ដីបង {name}! 🌸 អរគុណដែលបាន comment លើទំព័រយើងខ្ញុំ។ តើបងចង់ដឹងព័ត៌មានលម្អិត ឬតម្លៃផលិតផលដែរទេ? ខ្ញុំអាចជួយផ្ដល់ការប្រឹក្សាជូនបងបានភ្លាមៗណា! 💬✨";
+                  const dmMessage = dmTextTemplate.replace(/{name}/g, userTag);
+                  await sendPrivateReply({
+                    pageAccessToken: PAGE_ACCESS_TOKEN,
+                    commentId: commentId,
+                    message: dmMessage,
+                  });
+                } catch (dmErr) {
+                  console.error("Scanner Private Reply error:", dmErr);
+                }
+              }
 
               // Save to Supabase
               try {
