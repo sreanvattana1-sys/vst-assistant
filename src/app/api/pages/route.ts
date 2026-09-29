@@ -35,7 +35,10 @@ export async function GET(req: NextRequest) {
       .from("bot_settings")
       .select("id, is_active, dm_template");
 
-    const statusMap = new Map<string, boolean>();
+    const statusMap = new Map<
+      string,
+      { isActive: boolean; disabledByAdmin: boolean }
+    >();
     const memberPagesMap = new Map<
       string,
       { id: string; name: string; ownerName: string; category?: string }
@@ -62,7 +65,10 @@ export async function GET(req: NextRequest) {
             }
           } catch {}
         } else if (row.id !== "default") {
-          statusMap.set(row.id, row.is_active !== false);
+          statusMap.set(row.id, {
+            isActive: row.is_active !== false,
+            disabledByAdmin: row.dm_template === "LOCKED_BY_ADMIN",
+          });
         }
       });
     }
@@ -72,14 +78,17 @@ export async function GET(req: NextRequest) {
 
     // Add admin pages
     DEFAULT_PAGES.forEach((p) => {
+      const pageStatus = statusMap.get(p.id);
       pagesMap.set(p.id, {
         ...p,
-        isActive: statusMap.has(p.id) ? statusMap.get(p.id)! : p.isActive,
+        isActive: pageStatus ? pageStatus.isActive : p.isActive,
+        disabledByAdmin: pageStatus ? pageStatus.disabledByAdmin : false,
       });
     });
 
     // Add member pages
     memberPagesMap.forEach((p, pageId) => {
+      const pageStatus = statusMap.get(pageId);
       if (pagesMap.has(pageId)) {
         const existing = pagesMap.get(pageId);
         existing.ownerName = `${existing.ownerName} / ${p.ownerName}`;
@@ -89,7 +98,8 @@ export async function GET(req: NextRequest) {
           name: p.name,
           category: p.category || "Facebook Page (Member)",
           ownerName: p.ownerName,
-          isActive: statusMap.has(p.id) ? statusMap.get(p.id)! : true,
+          isActive: pageStatus ? pageStatus.isActive : true,
+          disabledByAdmin: pageStatus ? pageStatus.disabledByAdmin : false,
         });
       }
     });
@@ -120,7 +130,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { pageId, isActive } = await req.json();
+    const { pageId, isActive, isAdmin } = await req.json();
 
     if (!pageId || typeof isActive !== "boolean") {
       return NextResponse.json(
@@ -129,20 +139,47 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Upsert into Supabase bot_settings
-    await supabase.from("bot_settings").upsert(
-      {
-        id: pageId,
-        is_active: isActive,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "id" }
-    );
+    // 1. Check existing settings for Admin Lock
+    const { data: existingRow } = await supabase
+      .from("bot_settings")
+      .select("dm_template")
+      .eq("id", pageId)
+      .maybeSingle();
+
+    const isLockedByAdmin = existingRow?.dm_template === "LOCKED_BY_ADMIN";
+
+    // 2. Member trying to enable a page that was locked/disabled by Admin
+    if (!isAdmin && isLockedByAdmin) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "ទំព័រនេះត្រូវបានផ្អាកដោយ Super Admin។ មានតែ Admin ប៉ុណ្ណោះដែលអាចបើកដំណើរការ Bot ឡើងវិញបាន!",
+          locked: true,
+        },
+        { status: 403 }
+      );
+    }
+
+    // 3. Upsert into Supabase bot_settings
+    const updatePayload: any = {
+      id: pageId,
+      is_active: isActive,
+      updated_at: new Date().toISOString(),
+    };
+
+    // If Super Admin is explicitly disabling, record the Admin Lock
+    if (isAdmin) {
+      updatePayload.dm_template = isActive ? "" : "LOCKED_BY_ADMIN";
+    }
+
+    await supabase.from("bot_settings").upsert(updatePayload, { onConflict: "id" });
 
     return NextResponse.json({
       success: true,
       pageId,
       isActive,
+      disabledByAdmin: isAdmin ? !isActive : isLockedByAdmin,
     });
   } catch (err) {
     console.error("POST /api/pages error:", err);

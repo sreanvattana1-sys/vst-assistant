@@ -76,6 +76,7 @@ export default function VSTAssistantApp() {
       picture?: string | null;
       isActive: boolean;
       ownerName?: string;
+      disabledByAdmin?: boolean;
     }>
   >([
     {
@@ -387,20 +388,52 @@ export default function VSTAssistantApp() {
     }
   };
 
-  const handleTogglePage = async (pageId: string, currentStatus: boolean) => {
+  const handleTogglePage = async (pageId: string, currentStatus: boolean, disabledByAdmin?: boolean) => {
+    if (!isAdmin && disabledByAdmin) {
+      alert(
+        lang === "km"
+          ? "🔒 ទំព័រនេះត្រូវបានផ្អាកដោយ Super Admin។ មានតែ Admin ប៉ុណ្ណោះដែលអាចបើកដំណើរការឡើងវិញបាន!"
+          : "🔒 This page has been disabled by Super Admin. Only Admin can re-enable it!"
+      );
+      return;
+    }
+
     const newStatus = !currentStatus;
     setManagedPages((prev) =>
       prev.map((p) => (p.id === pageId ? { ...p, isActive: newStatus } : p))
     );
 
     try {
-      await fetch("/api/pages", {
+      const res = await fetch("/api/pages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pageId, isActive: newStatus }),
+        body: JSON.stringify({ pageId, isActive: newStatus, isAdmin: Boolean(isAdmin) }),
       });
+      const data = await res.json();
+      if (!data.success) {
+        // Revert on failure or unauthorized
+        setManagedPages((prev) =>
+          prev.map((p) => (p.id === pageId ? { ...p, isActive: currentStatus } : p))
+        );
+        if (data.error) alert(data.error);
+      } else {
+        setManagedPages((prev) =>
+          prev.map((p) =>
+            p.id === pageId
+              ? {
+                  ...p,
+                  isActive: newStatus,
+                  disabledByAdmin: data.disabledByAdmin !== undefined ? data.disabledByAdmin : p.disabledByAdmin,
+                }
+              : p
+          )
+        );
+      }
     } catch (err) {
       console.error("Failed to toggle page status:", err);
+      setManagedPages((prev) =>
+        prev.map((p) => (p.id === pageId ? { ...p, isActive: currentStatus } : p))
+      );
     }
   };
 
@@ -1563,13 +1596,19 @@ export default function VSTAssistantApp() {
                     <div>
                       <div className="flex items-center justify-between">
                         <span
-                          className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold border ${
-                            page.isActive
+                          className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold border flex items-center gap-1 ${
+                            page.disabledByAdmin && !isAdmin
+                              ? "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                              : page.isActive
                               ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                               : "bg-slate-700/30 text-slate-400 border-slate-700/40"
                           }`}
                         >
-                          {page.isActive
+                          {page.disabledByAdmin && !isAdmin
+                            ? lang === "km"
+                              ? "🔒 ផ្អាកដោយ Admin"
+                              : "🔒 Locked by Admin"
+                            : page.isActive
                             ? lang === "km"
                               ? "● ដំណើរការ"
                               : "● Active"
@@ -1614,23 +1653,44 @@ export default function VSTAssistantApp() {
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-slate-400">Bot:</span>
                         <button
-                          onClick={() => handleTogglePage(page.id, page.isActive)}
-                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${
-                            page.isActive ? "bg-cyan-500" : "bg-slate-700"
+                          type="button"
+                          disabled={!isAdmin && page.disabledByAdmin}
+                          onClick={() => handleTogglePage(page.id, page.isActive, page.disabledByAdmin)}
+                          className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ${
+                            !isAdmin && page.disabledByAdmin
+                              ? "opacity-50 cursor-not-allowed bg-slate-800"
+                              : "cursor-pointer " + (page.isActive ? "bg-cyan-500" : "bg-slate-700")
                           }`}
+                          title={
+                            !isAdmin && page.disabledByAdmin
+                              ? lang === "km"
+                                ? "ផ្អាកដោយ Super Admin"
+                                : "Disabled by Admin"
+                              : ""
+                          }
                         >
                           <span
                             className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ${
-                              page.isActive ? "translate-x-4" : "translate-x-0"
+                              page.isActive && (!page.disabledByAdmin || isAdmin)
+                                ? "translate-x-4"
+                                : "translate-x-0"
                             }`}
                           />
                         </button>
                         <span
                           className={`text-xs font-bold ${
-                            page.isActive ? "text-cyan-400" : "text-slate-500"
+                            !isAdmin && page.disabledByAdmin
+                              ? "text-rose-400"
+                              : page.isActive
+                              ? "text-cyan-400"
+                              : "text-slate-500"
                           }`}
                         >
-                          {page.isActive ? "ON" : "OFF"}
+                          {!isAdmin && page.disabledByAdmin
+                            ? "LOCKED"
+                            : page.isActive
+                            ? "ON"
+                            : "OFF"}
                         </span>
                       </div>
 
