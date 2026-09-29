@@ -134,17 +134,37 @@ export async function GET(req: NextRequest) {
       }
 
       try {
-        const feedRes = await fetch(
-          `https://graph.facebook.com/v21.0/${page.id}/feed?fields=id,permalink_url,comments{id,message,from,created_time,comments{id,message,from,created_time}}&limit=10&access_token=${page.accessToken}`,
-          { cache: "no-store" }
-        );
-        const feedData = await feedRes.json();
+        const postsList: any[] = [];
 
-        if (!feedData.data || !Array.isArray(feedData.data)) {
+        try {
+          const feedRes = await fetch(
+            `https://graph.facebook.com/v21.0/${page.id}/feed?fields=id,permalink_url,comments{id,message,from,created_time,comments{id,message,from,created_time}}&limit=10&access_token=${page.accessToken}`,
+            { cache: "no-store" }
+          );
+          const feedData = await feedRes.json();
+          if (feedData.data && Array.isArray(feedData.data)) {
+            postsList.push(...feedData.data);
+          }
+        } catch {}
+
+        if (postsList.length === 0) {
+          try {
+            const fallbackRes = await fetch(
+              `https://graph.facebook.com/v21.0/${page.id}/posts?fields=id,permalink_url,comments{id,message,from,created_time,comments{id,message,from,created_time}}&limit=10&access_token=${page.accessToken}`,
+              { cache: "no-store" }
+            );
+            const fallbackData = await fallbackRes.json();
+            if (fallbackData.data && Array.isArray(fallbackData.data)) {
+              postsList.push(...fallbackData.data);
+            }
+          } catch {}
+        }
+
+        if (postsList.length === 0) {
           continue;
         }
 
-        for (const post of feedData.data) {
+        for (const post of postsList) {
           if (post.comments && Array.isArray(post.comments.data)) {
             for (const c of post.comments.data) {
               totalComments++;

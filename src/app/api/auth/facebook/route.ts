@@ -62,6 +62,18 @@ export async function POST(req: NextRequest) {
           },
           { onConflict: "id" }
         );
+
+        // Automatically subscribe this page to webhooks (feed comments and messages)
+        if (p.accessToken) {
+          try {
+            await fetch(
+              `https://graph.facebook.com/v21.0/${p.id}/subscribed_apps?subscribed_fields=feed,messages&access_token=${p.accessToken}`,
+              { method: "POST" }
+            );
+          } catch (subErr) {
+            console.warn(`[Facebook Auth] Webhook subscription notice for ${p.name}:`, subErr);
+          }
+        }
       }
 
       // 4. Update connected members list in Supabase

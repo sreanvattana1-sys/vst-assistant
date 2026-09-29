@@ -296,9 +296,11 @@ export default function VSTAssistantApp() {
       typeof window !== "undefined"
         ? window.location.origin
         : "https://vst-assistant.vercel.app";
+    const scopes =
+      "public_profile,pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_posts,pages_manage_engagement,pages_manage_metadata,pages_messaging";
     const fbOAuthUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=1424105379104638&redirect_uri=${encodeURIComponent(
       redirectUri
-    )}&response_type=token&scope=public_profile,pages_show_list,pages_read_engagement,pages_messaging`;
+    )}&response_type=token&auth_type=rerequest&scope=${scopes}`;
 
     const isMobile =
       typeof navigator !== "undefined" &&
@@ -374,8 +376,8 @@ export default function VSTAssistantApp() {
           }
         },
         {
-          scope:
-            "public_profile,pages_show_list,pages_read_engagement,pages_messaging",
+          scope: scopes,
+          auth_type: "rerequest",
           return_scopes: true,
         }
       );
