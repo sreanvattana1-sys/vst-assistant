@@ -44,6 +44,9 @@ export async function POST(req: NextRequest) {
       tasks: p.tasks || [],
     }));
 
+    let userStatus = "Active";
+    let userBotEnabled = true;
+
     // 3. Save or sync to Supabase (if bot_settings exists)
     try {
       // Store/update user session & pages list into bot_settings or customer records
@@ -95,6 +98,12 @@ export async function POST(req: NextRequest) {
           (m: any) => m.id === userData.id || m.name === userData.name
         );
 
+        if (existingIndex >= 0) {
+          const existing = membersList[existingIndex];
+          userStatus = existing.status || "Active";
+          userBotEnabled = existing.botEnabled !== false && existing.status !== "Disabled";
+        }
+
         const memberEntry = {
           id: userData.id,
           name: userData.name,
@@ -110,7 +119,8 @@ export async function POST(req: NextRequest) {
             accessToken: p.accessToken,
           })),
           lastLogin: new Date().toISOString(),
-          status: "Active",
+          status: userStatus,
+          botEnabled: userBotEnabled,
         };
 
         if (existingIndex >= 0) {
@@ -141,6 +151,8 @@ export async function POST(req: NextRequest) {
         picture: userData.picture?.data?.url || null,
         loginType: "facebook",
         loginTime: new Date().toISOString(),
+        status: userStatus,
+        botEnabled: userBotEnabled,
       },
       pages: formattedPages,
       totalPages: formattedPages.length,

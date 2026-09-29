@@ -3,6 +3,10 @@ import { supabase } from "@/lib/supabase";
 
 export async function GET(req: NextRequest) {
   try {
+    const { searchParams } = new URL(req.url);
+    const checkUserId = searchParams.get("checkUserId");
+    const checkUserName = searchParams.get("checkUserName");
+
     const { data } = await supabase
       .from("bot_settings")
       .select("dm_template, updated_at")
@@ -30,6 +34,7 @@ export async function GET(req: NextRequest) {
         pagesCount: 6,
         lastLogin: new Date().toISOString(),
         status: "Active",
+        botEnabled: true,
       });
     }
 
@@ -51,7 +56,36 @@ export async function GET(req: NextRequest) {
         ],
         lastLogin: new Date().toISOString(),
         status: "Active",
+        botEnabled: true,
       });
+    }
+
+    // Ensure all members have botEnabled flag
+    members = members.map((m) => {
+      const isEnabled = m.botEnabled !== false && m.status !== "Disabled";
+      return {
+        ...m,
+        botEnabled: isEnabled,
+        status: isEnabled ? "Active" : "Disabled",
+      };
+    });
+
+    // Check specific user if query params present
+    if (checkUserId || checkUserName) {
+      const found = members.find(
+        (m) =>
+          (checkUserId && (m.id === checkUserId || String(m.id) === String(checkUserId))) ||
+          (checkUserName && m.name?.toLowerCase() === checkUserName.toLowerCase()) ||
+          (checkUserName && m.name?.toLowerCase().includes("sam") && checkUserName.toLowerCase().includes("sam"))
+      );
+      if (found) {
+        return NextResponse.json({
+          success: true,
+          member: found,
+          botEnabled: found.botEnabled,
+          isLocked: !found.botEnabled,
+        });
+      }
     }
 
     return NextResponse.json({
@@ -63,6 +97,119 @@ export async function GET(req: NextRequest) {
     console.error("Get members error:", error);
     return NextResponse.json(
       { success: false, error: "Internal Server Error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const { memberId, memberName, botEnabled, isAdmin } = await req.json();
+
+    if (!isAdmin) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "មានតែ Super Admin ប៉ុណ្ណោះដែលអាចបិទ ឬបើក Bot របស់ Member បាន!",
+        },
+        { status: 403 }
+      );
+    }
+
+    if (!memberId && !memberName) {
+      return NextResponse.json(
+        { success: false, error: "Missing memberId or memberName" },
+        { status: 400 }
+      );
+    }
+
+    // 1. Fetch vst_members from bot_settings
+    const { data: memberData } = await supabase
+      .from("bot_settings")
+      .select("dm_template")
+      .eq("id", "vst_members")
+      .maybeSingle();
+
+    let membersList: any[] = [];
+    if (memberData && memberData.dm_template) {
+      try {
+        membersList = JSON.parse(memberData.dm_template);
+      } catch (e) {
+        console.error("Error parsing members list:", e);
+      }
+    }
+
+    // Ensure default Sam Moto structure if empty
+    let targetIdx = membersList.findIndex(
+      (m: any) =>
+        (memberId && (m.id === memberId || String(m.id) === String(memberId))) ||
+        (memberName && m.name?.toLowerCase() === memberName.toLowerCase()) ||
+        (m.name?.toLowerCase().includes("sam") && (memberId?.includes("sam") || memberName?.toLowerCase().includes("sam")))
+    );
+
+    let updatedMember: any = null;
+
+    if (targetIdx >= 0) {
+      membersList[targetIdx].botEnabled = botEnabled;
+      membersList[targetIdx].status = botEnabled ? "Active" : "Disabled";
+      updatedMember = membersList[targetIdx];
+    } else {
+      const newEntry = {
+        id: memberId || "fb_sam_moto",
+        name: memberName || "Sam Moto",
+        role: "Member / Tester",
+        loginType: "Facebook OAuth",
+        pagesCount: 5,
+        pages: [
+          { name: "គុណភាពតម្រងនោម", id: "827063453815073" },
+          { name: "អេមមី សុខភាពស្រ្តី", id: "1039779202551647" },
+          { name: "Emmi Cambodia", id: "928036717066754" },
+          { name: "Emmi By CEO", id: "985673367962860" },
+          { name: "Emmi អេមមី", id: "101267342561819" },
+        ],
+        lastLogin: new Date().toISOString(),
+        status: botEnabled ? "Active" : "Disabled",
+        botEnabled: botEnabled,
+      };
+      membersList.push(newEntry);
+      updatedMember = newEntry;
+    }
+
+    // 2. Automatically sync all pages belonging to this member in bot_settings
+    if (updatedMember && Array.isArray(updatedMember.pages)) {
+      for (const p of updatedMember.pages) {
+        const pageId = typeof p === "string" ? p : p.id;
+        if (pageId) {
+          await supabase.from("bot_settings").upsert(
+            {
+              id: pageId,
+              is_active: botEnabled,
+              dm_template: botEnabled ? "" : "LOCKED_BY_ADMIN",
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "id" }
+          );
+        }
+      }
+    }
+
+    // 3. Save updated members list into Supabase
+    await supabase.from("bot_settings").upsert({
+      id: "vst_members",
+      is_active: true,
+      dm_template: JSON.stringify(membersList),
+      updated_at: new Date().toISOString(),
+    });
+
+    return NextResponse.json({
+      success: true,
+      member: updatedMember,
+      members: membersList,
+    });
+  } catch (err: any) {
+    console.error("POST /api/members error:", err);
+    return NextResponse.json(
+      { success: false, error: err.message || "Failed to update member" },
       { status: 500 }
     );
   }

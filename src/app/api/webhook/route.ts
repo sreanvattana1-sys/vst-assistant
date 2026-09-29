@@ -81,6 +81,10 @@ async function getPageConfig(pageId: string): Promise<PageConfig> {
                 if (matched) {
                   if (matched.accessToken) token = matched.accessToken;
                   if (matched.name) pageName = matched.name;
+                  if (m.botEnabled === false || m.status === "Disabled") {
+                    console.log(`[Webhook] Member ${m.name} bot is disabled by Admin. Muting page ${pageId}`);
+                    isPageActive = false;
+                  }
                   break;
                 }
               }

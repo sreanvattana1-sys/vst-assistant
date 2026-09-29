@@ -56,10 +56,14 @@ export default function VSTAssistantApp() {
     role?: string;
     picture?: string | null;
     loginType?: "admin" | "facebook";
+    botEnabled?: boolean;
+    status?: string;
   }>({
     name: "VST Super Admin",
     role: "owner",
     loginType: "admin",
+    botEnabled: true,
+    status: "Active",
   });
 
   const isAdmin =
@@ -503,6 +507,30 @@ export default function VSTAssistantApp() {
   const [membersList, setMembersList] = useState<any[]>([]);
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
   const [membersSearchQuery, setMembersSearchQuery] = useState("");
+  const [isMemberBotLocked, setIsMemberBotLocked] = useState(false);
+  const [togglingMemberId, setTogglingMemberId] = useState<string | null>(null);
+
+  // Check if non-admin current user is locked / disabled by Admin
+  useEffect(() => {
+    if (!isAdmin && currentUser && (currentUser.name || currentUser.id)) {
+      fetch(
+        `/api/bot-status?memberId=${currentUser.id || ""}&memberName=${encodeURIComponent(
+          currentUser.name || ""
+        )}`
+      )
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.isLockedByAdmin || data.memberBotEnabled === false) {
+            setIsMemberBotLocked(true);
+            setBotActive(false);
+          } else {
+            setIsMemberBotLocked(false);
+            setBotActive(data.active !== false);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isAdmin, currentUser]);
 
   const fetchMembers = async () => {
     setIsLoadingMembers(true);
@@ -516,6 +544,53 @@ export default function VSTAssistantApp() {
       console.error("Failed to load members:", e);
     } finally {
       setIsLoadingMembers(false);
+    }
+  };
+
+  const handleToggleMemberBot = async (member: any) => {
+    if (!isAdmin) return;
+    const isCurrentlyEnabled = member.botEnabled !== false && member.status !== "Disabled";
+    const newEnabled = !isCurrentlyEnabled;
+    const memberKey = member.id || member.name;
+    setTogglingMemberId(memberKey);
+
+    // Optimistic UI update
+    setMembersList((prev) =>
+      prev.map((item) =>
+        (member.id && item.id === member.id) || (member.name && item.name === member.name)
+          ? {
+              ...item,
+              botEnabled: newEnabled,
+              status: newEnabled ? "Active" : "Disabled",
+            }
+          : item
+      )
+    );
+
+    try {
+      const res = await fetch("/api/members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          memberId: member.id,
+          memberName: member.name,
+          botEnabled: newEnabled,
+          isAdmin: true,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        // Also refresh pages list so that pages belonging to this member reflect lock state immediately
+        fetchPages();
+      } else {
+        alert(data.error || "បរាជ័យក្នុងការកំណត់ស្ថានភាព Bot របស់សមាជិក");
+        fetchMembers();
+      }
+    } catch (err) {
+      console.error("Error toggling member bot:", err);
+      fetchMembers();
+    } finally {
+      setTogglingMemberId(null);
     }
   };
 
@@ -974,31 +1049,80 @@ export default function VSTAssistantApp() {
             <div className="flex items-center gap-2.5 rounded-full border border-slate-700/60 bg-slate-800/40 px-3 py-1.5 text-xs font-medium">
               <span className="text-slate-400">{t.botStatusLabel}</span>
               <button
+                type="button"
+                disabled={!isAdmin && isMemberBotLocked}
                 onClick={async () => {
+                  if (!isAdmin && isMemberBotLocked) {
+                    alert(
+                      lang === "km"
+                        ? "គណនីរបស់អ្នកត្រូវបានផ្អាក Bot ដោយ Super Admin។ មានតែ Admin ទើបអាចបើកបាន!"
+                        : "Your bot access has been disabled by Super Admin. Contact Admin to re-enable."
+                    );
+                    return;
+                  }
                   const newState = !botActive;
                   setBotActive(newState);
                   try {
-                    await fetch("/api/bot-status", {
+                    const res = await fetch("/api/bot-status", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ active: newState }),
+                      body: JSON.stringify({
+                        active: newState,
+                        isAdmin,
+                        memberId: currentUser.id,
+                        memberName: currentUser.name,
+                      }),
                     });
+                    const data = await res.json();
+                    if (!data.success && data.locked) {
+                      setBotActive(false);
+                      setIsMemberBotLocked(true);
+                      alert(data.error || "Bot ត្រូវបានចាក់សោដោយ Super Admin");
+                    }
                   } catch (e) {
                     console.error("Failed to update bot status", e);
                   }
                 }}
-                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  botActive ? "bg-cyan-500" : "bg-slate-700"
+                className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  !isAdmin && isMemberBotLocked
+                    ? "cursor-not-allowed opacity-60 bg-slate-700"
+                    : botActive
+                    ? "cursor-pointer bg-cyan-500"
+                    : "cursor-pointer bg-slate-700"
                 }`}
+                title={
+                  !isAdmin && isMemberBotLocked
+                    ? "Bot ត្រូវបានបិទដោយ Super Admin មិនអាចបើកដោយខ្លួនឯងបានទេ"
+                    : undefined
+                }
               >
                 <span
                   className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                    botActive ? "translate-x-4" : "translate-x-0"
+                    botActive && (!isMemberBotLocked || isAdmin)
+                      ? "translate-x-4"
+                      : "translate-x-0"
                   }`}
                 />
               </button>
-              <span className={botActive ? "text-cyan-400 font-bold" : "text-slate-500"}>
-                {botActive ? t.on : t.off}
+              <span
+                className={
+                  !isAdmin && isMemberBotLocked
+                    ? "text-rose-400 font-bold flex items-center gap-1"
+                    : botActive
+                    ? "text-cyan-400 font-bold"
+                    : "text-slate-500"
+                }
+              >
+                {!isAdmin && isMemberBotLocked ? (
+                  <span className="flex items-center gap-1">
+                    <Lock className="h-3 w-3 inline text-rose-400" />
+                    <span>{lang === "km" ? "បិទ (Locked)" : "OFF (Locked)"}</span>
+                  </span>
+                ) : botActive ? (
+                  t.on
+                ) : (
+                  t.off
+                )}
               </span>
             </div>
 
@@ -1831,6 +1955,7 @@ export default function VSTAssistantApp() {
                           <th className="p-3.5">{t.adminTab.colPages}</th>
                           <th className="p-3.5">{t.adminTab.colLastLogin}</th>
                           <th className="p-3.5">{t.adminTab.colStatus}</th>
+                          <th className="p-3.5">{t.adminTab.colBotControl}</th>
                           <th className="p-3.5 text-right">{t.adminTab.colActions}</th>
                         </tr>
                       </thead>
@@ -1932,10 +2057,74 @@ export default function VSTAssistantApp() {
                               </td>
 
                               <td className="p-3.5">
-                                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-400 border border-emerald-500/20">
-                                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                <span
+                                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium border ${
+                                    m.botEnabled !== false && m.status !== "Disabled"
+                                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                      : "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                                  }`}
+                                >
+                                  <span
+                                    className={`h-1.5 w-1.5 rounded-full ${
+                                      m.botEnabled !== false && m.status !== "Disabled"
+                                        ? "bg-emerald-400 animate-pulse"
+                                        : "bg-rose-400"
+                                    }`}
+                                  />
                                   <span>{m.status || "Active"}</span>
                                 </span>
+                              </td>
+
+                              <td className="p-3.5">
+                                {m.role?.includes("Owner") ? (
+                                  <div className="flex items-center gap-1.5 text-xs text-amber-400 font-semibold">
+                                    <Shield className="h-3.5 w-3.5" />
+                                    <span>Master Control</span>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2.5">
+                                    <button
+                                      type="button"
+                                      disabled={!isAdmin || togglingMemberId === (m.id || m.name)}
+                                      onClick={() => handleToggleMemberBot(m)}
+                                      className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                        m.botEnabled !== false && m.status !== "Disabled"
+                                          ? "bg-emerald-500 shadow-md shadow-emerald-500/20"
+                                          : "bg-slate-700"
+                                      } ${
+                                        !isAdmin || togglingMemberId === (m.id || m.name)
+                                          ? "opacity-50 cursor-not-allowed"
+                                          : ""
+                                      }`}
+                                      title={
+                                        isAdmin
+                                          ? m.botEnabled !== false && m.status !== "Disabled"
+                                            ? "ចុចដើម្បីបិទ Bot របស់ Member នេះ"
+                                            : "ចុចដើម្បីបើក Bot របស់ Member នេះ"
+                                          : "មានតែ Super Admin ទើបអាចបិទបើកបាន"
+                                      }
+                                    >
+                                      <span
+                                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                          m.botEnabled !== false && m.status !== "Disabled"
+                                            ? "translate-x-5"
+                                            : "translate-x-0"
+                                        }`}
+                                      />
+                                    </button>
+                                    <span
+                                      className={`text-xs font-bold ${
+                                        m.botEnabled !== false && m.status !== "Disabled"
+                                          ? "text-emerald-400"
+                                          : "text-rose-400"
+                                      }`}
+                                    >
+                                      {m.botEnabled !== false && m.status !== "Disabled"
+                                        ? "Bot ON"
+                                        : "Bot OFF 🔒"}
+                                    </span>
+                                  </div>
+                                )}
                               </td>
 
                               <td className="p-3.5 text-right">
