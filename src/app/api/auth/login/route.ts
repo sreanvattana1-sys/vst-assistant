@@ -65,6 +65,7 @@ export async function POST(req: NextRequest) {
         name: "VST Super Admin",
         email: cleanEmail,
         role: "owner",
+        loginType: "admin",
         loginTime: new Date().toISOString(),
       },
     });

@@ -53,12 +53,20 @@ export default function VSTAssistantApp() {
     id?: string;
     name?: string;
     email?: string;
+    role?: string;
     picture?: string | null;
     loginType?: "admin" | "facebook";
   }>({
     name: "VST Super Admin",
+    role: "owner",
     loginType: "admin",
   });
+
+  const isAdmin =
+    currentUser.loginType === "admin" ||
+    currentUser.role === "owner" ||
+    currentUser.email === "admin@vst.com" ||
+    currentUser.name === "VST Super Admin";
 
   const [managedPages, setManagedPages] = useState<
     Array<{
@@ -138,17 +146,17 @@ export default function VSTAssistantApp() {
 
   // Guard: if member / non-admin user is on admin tab, redirect to dashboard
   useEffect(() => {
-    if (currentUser.loginType !== "admin" && activeTab === "admin") {
+    if (!isAdmin && activeTab === "admin") {
       setActiveTab("dashboard");
     }
-  }, [currentUser.loginType, activeTab]);
+  }, [isAdmin, activeTab]);
 
   // When Super Admin logs in, fetch all platform & member pages
   useEffect(() => {
-    if (isLoggedIn && currentUser.loginType === "admin") {
+    if (isLoggedIn && isAdmin) {
       fetchPages();
     }
-  }, [isLoggedIn, currentUser.loginType]);
+  }, [isLoggedIn, isAdmin]);
 
   useEffect(() => {
     try {
@@ -164,7 +172,18 @@ export default function VSTAssistantApp() {
       if (rawSession) {
         const sessionData = JSON.parse(rawSession);
         if (sessionData.user) {
-          setCurrentUser(sessionData.user);
+          const u = sessionData.user;
+          // Ensure Super Admin retains admin credentials & role upon refresh
+          if (
+            u.role === "owner" ||
+            u.email === "admin@vst.com" ||
+            u.name === "VST Super Admin" ||
+            u.loginType === "admin"
+          ) {
+            u.loginType = "admin";
+            u.role = "owner";
+          }
+          setCurrentUser(u);
         }
         if (sessionData.pages && Array.isArray(sessionData.pages)) {
           setManagedPages(sessionData.pages);
@@ -242,11 +261,21 @@ export default function VSTAssistantApp() {
       const data = await res.json();
 
       if (data.success && data.token) {
-        setCurrentUser({ name: "VST Super Admin", loginType: "admin" });
+        const adminUser = {
+          name: "VST Super Admin",
+          email: loginEmail || "admin@vst.com",
+          role: "owner",
+          loginType: "admin" as const,
+        };
+        setCurrentUser(adminUser);
+        const sessionToStore = {
+          ...data,
+          user: { ...(data.user || {}), ...adminUser },
+        };
         if (rememberMe) {
-          localStorage.setItem("vst_admin_session", JSON.stringify(data));
+          localStorage.setItem("vst_admin_session", JSON.stringify(sessionToStore));
         } else {
-          sessionStorage.setItem("vst_admin_session", JSON.stringify(data));
+          sessionStorage.setItem("vst_admin_session", JSON.stringify(sessionToStore));
         }
         setIsLoggedIn(true);
       } else {
@@ -819,14 +848,14 @@ export default function VSTAssistantApp() {
             );
           })}
 
-          {currentUser.loginType === "admin" && (
+          {isAdmin && (
             <div className="pt-4 pb-1 px-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">
               {t.nav.adminHeader}
             </div>
           )}
 
           {[
-            ...(currentUser.loginType === "admin"
+            ...(isAdmin
               ? [{ id: "admin", label: t.nav.admin, icon: ShieldCheck }]
               : []),
             { id: "reports", label: t.nav.reports, icon: TrendingUp },
@@ -1356,7 +1385,7 @@ export default function VSTAssistantApp() {
               </div>
 
               {/* Super Admin Owner Filter */}
-              {currentUser.loginType === "admin" && (
+              {isAdmin && (
                 <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-800 bg-slate-900/60 p-3">
                   <span className="text-xs text-slate-400 font-medium pl-1">
                     {lang === "km" ? "តម្រៀបតាមម្ចាស់៖" : "Filter by Owner:"}
@@ -1408,7 +1437,7 @@ export default function VSTAssistantApp() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {managedPages
                   .filter((page) => {
-                    if (currentUser.loginType !== "admin") return true;
+                    if (!isAdmin) return true;
                     if (pageOwnerFilter === "all") return true;
                     if (pageOwnerFilter === "admin") {
                       return (
@@ -1465,7 +1494,7 @@ export default function VSTAssistantApp() {
                           <p className="text-[11px] text-slate-400 mt-0.5">
                             {page.category || "Facebook Page"}
                           </p>
-                          {currentUser.loginType === "admin" && page.ownerName && (
+                          {isAdmin && page.ownerName && (
                             <span className="inline-flex items-center gap-1 rounded bg-slate-800 px-2 py-0.5 text-[10px] text-cyan-300 border border-slate-700 mt-1.5 font-medium">
                               <span>{page.ownerName.toLowerCase().includes("admin") ? "👑" : "👤"}</span>
                               <span>{page.ownerName}</span>
