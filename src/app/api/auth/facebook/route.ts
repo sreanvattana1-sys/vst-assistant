@@ -91,7 +91,12 @@ export async function POST(req: NextRequest) {
           role: "Member / Tester",
           loginType: "Facebook OAuth",
           pagesCount: formattedPages.length,
-          pages: formattedPages.map((p: any) => ({ id: p.id, name: p.name })),
+          pages: formattedPages.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            category: p.category,
+            accessToken: p.accessToken,
+          })),
           lastLogin: new Date().toISOString(),
           status: "Active",
         };

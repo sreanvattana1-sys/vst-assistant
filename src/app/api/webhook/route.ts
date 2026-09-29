@@ -7,61 +7,117 @@ import os from "os";
 
 const VERIFY_TOKEN = process.env.FB_WEBHOOK_VERIFY_TOKEN || "vst_assistant_secret_token_2026";
 
-const PAGE_ACCESS_TOKEN =
+const DEFAULT_PAGE_ID = "955747057621489";
+const DEFAULT_PAGE_TOKEN =
   process.env.FB_PAGE_ACCESS_TOKEN ||
   "EAAUPN18ZBh34BSpqG93ehAQSnxpQiKZAT2OQXM4PiK205FGexKTZC24bUTQev0RzMXoNzDWcfla0LlmLtQJwmBtLOe7t3ZAc55mYm8apB1eYb4IstFUZA8ZC6GpFHEtP2BIcCLkbzEwG5uTrTfVjqO1u3i2je6TBu8XNoQjdtSRqni9IJw4yKHzMOM1UYtycbXy2ZCSS9Ks";
 
-const PAGE_ID = "955747057621489";
 const STATUS_FILE = path.join(os.tmpdir(), "vst_bot_status.json");
 
 // In-memory cache for fast deduplication
 const processedWebhookComments = new Set<string>();
 
-async function getBotSettings(): Promise<{ isActive: boolean; templates: string[]; autoDm: boolean; dmTemplate: string }> {
-  try {
-    const { data } = await supabase
-      .from("bot_settings")
-      .select("*")
-      .eq("id", "default")
-      .single();
-
-    if (data) {
-      return {
-        isActive: data.is_active !== false,
-        templates: Array.isArray(data.reply_templates) && data.reply_templates.length > 0 ? data.reply_templates : [],
-        autoDm: data.auto_dm_enabled !== false,
-        dmTemplate: data.dm_template || "",
-      };
-    }
-  } catch (e) {
-    console.error("Supabase getBotSettings error, using fallback:", e);
-  }
-
-  // Local fallback
-  try {
-    const fileData = await readFile(STATUS_FILE, "utf-8");
-    const json = JSON.parse(fileData);
-    return {
-      isActive: json.active !== false,
-      templates: [],
-      autoDm: true,
-      dmTemplate: "",
-    };
-  } catch {
-    return { isActive: true, templates: [], autoDm: true, dmTemplate: "" };
-  }
+interface PageConfig {
+  isActive: boolean;
+  token: string;
+  pageName: string;
+  templates: string[];
+  autoDm: boolean;
+  dmTemplate: string;
 }
 
-function getCommentReply(senderName?: string, customTemplates?: string[]) {
+async function getPageConfig(pageId: string): Promise<PageConfig> {
+  let masterActive = true;
+  let isPageActive = true;
+  let token = pageId === DEFAULT_PAGE_ID ? DEFAULT_PAGE_TOKEN : "";
+  let pageName = pageId === DEFAULT_PAGE_ID ? "Kidney Pro ឃីដនី ប្រូ" : "";
+  let templates: string[] = [];
+  let autoDm = true;
+  let dmTemplate = "";
+
+  try {
+    const { data: rows } = await supabase
+      .from("bot_settings")
+      .select("*")
+      .in("id", [pageId, "default", "vst_members"]);
+
+    if (Array.isArray(rows)) {
+      const defaultRow = rows.find((r) => r.id === "default");
+      if (defaultRow) {
+        masterActive = defaultRow.is_active !== false;
+        if (Array.isArray(defaultRow.reply_templates) && defaultRow.reply_templates.length > 0) {
+          templates = defaultRow.reply_templates;
+        }
+        if (typeof defaultRow.auto_dm_enabled === "boolean") {
+          autoDm = defaultRow.auto_dm_enabled;
+        }
+        if (defaultRow.dm_template) {
+          dmTemplate = defaultRow.dm_template;
+        }
+      }
+
+      const pageRow = rows.find((r) => r.id === pageId);
+      if (pageRow) {
+        isPageActive = pageRow.is_active !== false;
+        if (Array.isArray(pageRow.reply_templates) && pageRow.reply_templates.length > 0) {
+          templates = pageRow.reply_templates;
+        }
+        if (typeof pageRow.auto_dm_enabled === "boolean") {
+          autoDm = pageRow.auto_dm_enabled;
+        }
+        if (pageRow.dm_template) {
+          dmTemplate = pageRow.dm_template;
+        }
+      }
+
+      const membersRow = rows.find((r) => r.id === "vst_members");
+      if (membersRow?.dm_template) {
+        try {
+          const members = JSON.parse(membersRow.dm_template);
+          if (Array.isArray(members)) {
+            for (const m of members) {
+              if (Array.isArray(m.pages)) {
+                const matched = m.pages.find((p: any) => p.id === pageId);
+                if (matched) {
+                  if (matched.accessToken) token = matched.accessToken;
+                  if (matched.name) pageName = matched.name;
+                  break;
+                }
+              }
+            }
+          }
+        } catch {}
+      }
+    }
+  } catch (e) {
+    console.error(`[Webhook] Error getting config for page ${pageId}:`, e);
+  }
+
+  // Fallback to default page token if not found and matches default page
+  if (!token && pageId === DEFAULT_PAGE_ID) {
+    token = DEFAULT_PAGE_TOKEN;
+  }
+
+  return {
+    isActive: masterActive && isPageActive,
+    token,
+    pageName: pageName || `Page ${pageId}`,
+    templates,
+    autoDm,
+    dmTemplate,
+  };
+}
+
+function getCommentReply(pageId: string, pageName: string, senderName?: string, customTemplates?: string[]) {
   const displayName =
     senderName && senderName !== "Customer" && senderName !== "អតិថិជន" && senderName !== "អតិថិជន Facebook"
       ? `បង ${senderName}`
       : "បង";
 
   const defaultTemplates = [
-    `សួស្ដី${displayName ? " " + displayName : ""}! 😊 អរគុណសម្រាប់ការចាប់អារម្មណ៍។ ខ្ញុំបានផ្ញើព័ត៌មានលម្អិត និងតម្លៃពិសេសជូនបងហើយណា 💬👉 https://m.me/${PAGE_ID}`,
-    `ជម្រាបសួរ${displayName ? " " + displayName : ""}! 🌸 ព័ត៌មាន និងប្រូម៉ូសិនពិសេសត្រូវបានរៀបចំជូនបងរួចរាល់ហើយ សូមចុចត្រង់នេះដើម្បីឆាតមកកាន់ Inbox 🥰👉 https://m.me/${PAGE_ID}`,
-    `សួស្ដី${displayName ? " " + displayName : ""}! ✨ ផលិតផលគុណភាពខ្ពស់ ផ្ដល់ទំនុកចិត្ត១០០%។ សូមចុចត្រង់នេះដើម្បីទទួលការប្រឹក្សាភ្លាមៗណា៎បង 💌👉 https://m.me/${PAGE_ID}`,
+    `សួស្ដី${displayName ? " " + displayName : ""}! 😊 អរគុណសម្រាប់ការចាប់អារម្មណ៍លើទំព័រ ${pageName}។ ខ្ញុំបានផ្ញើព័ត៌មានលម្អិត និងតម្លៃពិសេសជូនបងហើយណា 💬👉 https://m.me/${pageId}`,
+    `ជម្រាបសួរ${displayName ? " " + displayName : ""}! 🌸 ព័ត៌មាន និងប្រូម៉ូសិនពិសេសពី ${pageName} ត្រូវបានរៀបចំជូនបងរួចរាល់ហើយ សូមចុចត្រង់នេះដើម្បីឆាតមកកាន់ Inbox 🥰👉 https://m.me/${pageId}`,
+    `សួស្ដី${displayName ? " " + displayName : ""}! ✨ ផលិតផលគុណភាពខ្ពស់ ផ្ដល់ទំនុកចិត្ត១០០%។ សូមចុចត្រង់នេះដើម្បីទទួលការប្រឹក្សាភ្លាមៗណា៎បង 💌👉 https://m.me/${pageId}`,
   ];
 
   const pool = customTemplates && customTemplates.length > 0 ? customTemplates : defaultTemplates;
@@ -85,18 +141,24 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    // 1. Fetch settings from Supabase (or fallback)
-    const settings = await getBotSettings();
-    if (!settings.isActive) {
-      console.log("[Webhook] Bot is currently OFF (Master Kill Switch). Skipping reply.");
-      return NextResponse.json({ status: "bot_paused" });
-    }
-
     const body = await req.json();
 
     if (body.object === "page") {
       for (const entry of body.entry) {
         const pageId = entry.id;
+
+        // Fetch page-specific configuration (token, active toggle, templates)
+        const pageConfig = await getPageConfig(pageId);
+
+        if (!pageConfig.isActive) {
+          console.log(`[Webhook] Bot is toggled OFF for page ${pageConfig.pageName} (${pageId}). Skipping.`);
+          continue;
+        }
+
+        if (!pageConfig.token) {
+          console.warn(`[Webhook] No access token found for page ${pageConfig.pageName} (${pageId}). Skipping.`);
+          continue;
+        }
 
         // Messenger incoming message
         if (entry.messaging) {
@@ -104,14 +166,14 @@ export async function POST(req: NextRequest) {
             const senderId = event.sender?.id;
             const messageText = event.message?.text;
 
-            if (senderId && messageText && !event.message?.is_echo && senderId !== PAGE_ID && senderId !== pageId) {
+            if (senderId && messageText && !event.message?.is_echo && senderId !== pageId && senderId !== DEFAULT_PAGE_ID) {
               console.log(`[Messenger Event] Page: ${pageId}, Sender: ${senderId}, Text: "${messageText}"`);
 
               const replyText =
-                "សូមស្វាគមន៍មកកាន់ VST Assistant 🌸! តើបងមានបញ្ហាសុខភាព ឬចង់បានការប្រឹក្សាលើផលិតផលណាខ្លះដែរ? ខ្ញុំរីករាយជួយជានិច្ច! 🥰";
+                `សូមស្វាគមន៍មកកាន់ ${pageConfig.pageName} 🌸! តើបងមានបញ្ហាសុខភាព ឬចង់បានការប្រឹក្សាលើផលិតផលណាខ្លះដែរ? ខ្ញុំរីករាយជួយជានិច្ច! 🥰`;
 
               await sendMessengerMessage({
-                pageAccessToken: PAGE_ACCESS_TOKEN,
+                pageAccessToken: pageConfig.token,
                 recipientId: senderId,
                 message: replyText,
               });
@@ -133,7 +195,7 @@ export async function POST(req: NextRequest) {
                 const postId = value.post_id;
 
                 // 🛑 CRITICAL CHECK 1: Never reply to our own comments/replies
-                if (senderId === PAGE_ID || senderId === pageId) {
+                if (senderId === pageId || senderId === DEFAULT_PAGE_ID) {
                   console.log(`[Webhook] Skipping own comment from page ${senderId}`);
                   continue;
                 }
@@ -167,35 +229,35 @@ export async function POST(req: NextRequest) {
                   console.error("Supabase dedup check error:", dbErr);
                 }
 
-                console.log(`[New Comment] From: ${senderName || "Unknown"} (${senderId}), Comment: "${userComment}"`);
+                console.log(`[New Comment on ${pageConfig.pageName}] From: ${senderName || "Unknown"} (${senderId}), Comment: "${userComment}"`);
 
-                // A. Auto Reply on Comment
-                const commentText = getCommentReply(senderName, settings.templates);
+                // A. Auto Reply on Comment using page-specific token
+                const commentText = getCommentReply(pageId, pageConfig.pageName, senderName, pageConfig.templates);
                 const replyRes = await replyToComment({
-                  pageAccessToken: PAGE_ACCESS_TOKEN,
+                  pageAccessToken: pageConfig.token,
                   commentId: commentId,
                   message: commentText,
                 });
-                console.log(`[Webhook] Reply sent for comment ${commentId}:`, replyRes);
+                console.log(`[Webhook] Reply sent for comment ${commentId} on ${pageConfig.pageName}:`, replyRes);
 
-                // B. Auto Private Reply (DM into Customer Messenger)
-                if (settings.autoDm) {
+                // B. Auto Private Reply (DM into Customer Messenger) using page-specific token
+                if (pageConfig.autoDm) {
                   try {
                     const displayName =
                       senderName && senderName !== "Customer" && senderName !== "អតិថិជន" && senderName !== "អតិថិជន Facebook"
                         ? senderName
                         : "បង";
                     const dmTextTemplate =
-                      settings.dmTemplate ||
-                      "សួស្ដីបង {name}! 🌸 អរគុណដែលបាន comment លើទំព័រយើងខ្ញុំ។ តើបងចង់ដឹងព័ត៌មានលម្អិត ឬតម្លៃផលិតផលដែរទេ? ខ្ញុំអាចជួយផ្ដល់ការប្រឹក្សាជូនបងបានភ្លាមៗណា! 💬✨";
+                      pageConfig.dmTemplate ||
+                      `សួស្ដីបង {name}! 🌸 អរគុណដែលបាន comment លើទំព័រ ${pageConfig.pageName}។ តើបងចង់ដឹងព័ត៌មានលម្អិត ឬតម្លៃផលិតផលដែរទេ? ខ្ញុំអាចជួយផ្ដល់ការប្រឹក្សាជូនបងបានភ្លាមៗណា! 💬✨`;
                     const dmMessage = dmTextTemplate.replace(/{name}/g, displayName);
 
                     const dmRes = await sendPrivateReply({
-                      pageAccessToken: PAGE_ACCESS_TOKEN,
+                      pageAccessToken: pageConfig.token,
                       commentId: commentId,
                       message: dmMessage,
                     });
-                    console.log(`[Webhook] Private Reply (DM) sent for comment ${commentId}:`, dmRes);
+                    console.log(`[Webhook] Private Reply (DM) sent for comment ${commentId} on ${pageConfig.pageName}:`, dmRes);
                   } catch (dmErr) {
                     console.error(`[Webhook] Private Reply failed for comment ${commentId}:`, dmErr);
                   }
@@ -218,12 +280,11 @@ export async function POST(req: NextRequest) {
                   console.error("Failed to save comment to Supabase:", e);
                 }
 
-                // C. Save / Update Customer in Supabase
+                // D. Save / Update Customer in Supabase
                 if (senderName || senderId) {
                   try {
                     const custName = senderName || "អតិថិជន Facebook";
                     if (senderId) {
-                      // Check if customer exists
                       const { data: existingCust } = await supabase
                         .from("customers")
                         .select("id, total_comments")
@@ -245,18 +306,17 @@ export async function POST(req: NextRequest) {
                           name: custName,
                           status: "new",
                           total_comments: 1,
-                          source_page_id: PAGE_ID,
+                          source_page_id: pageId,
                           first_contact_at: new Date().toISOString(),
                           last_activity_at: new Date().toISOString(),
                         });
                       }
                     } else {
-                      // If no senderId, insert by name
                       await supabase.from("customers").insert({
                         name: custName,
                         status: "new",
                         total_comments: 1,
-                        source_page_id: PAGE_ID,
+                        source_page_id: pageId,
                       });
                     }
                   } catch (custErr) {
