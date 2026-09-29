@@ -39,10 +39,10 @@ export default function VSTAssistantApp() {
   const [lang, setLang] = useState<Language>("km");
 
   // Authentication state
-  const [loginEmail, setLoginEmail] = useState("admin@vst.com");
-  const [loginPassword, setLoginPassword] = useState("vst@2026");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberMe, setRememberMe] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
@@ -101,6 +101,7 @@ export default function VSTAssistantApp() {
           cookie: true,
           xfbml: true,
           version: "v21.0",
+          status: true,
         });
       };
 
@@ -136,7 +137,7 @@ export default function VSTAssistantApp() {
         setLang(savedLang);
       }
 
-      // Check existing admin session (Remember Me)
+      // 1. Check existing admin session (Remember Me)
       const rawSession =
         localStorage.getItem("vst_admin_session") ||
         sessionStorage.getItem("vst_admin_session");
@@ -149,6 +150,52 @@ export default function VSTAssistantApp() {
           setManagedPages(sessionData.pages);
         }
         setIsLoggedIn(true);
+      }
+
+      // 2. Check Facebook OAuth redirect token (#access_token=... or ?access_token=...)
+      if (typeof window !== "undefined") {
+        const hash = window.location.hash ? window.location.hash.substring(1) : "";
+        const search = window.location.search ? window.location.search.substring(1) : "";
+        const hashParams = new URLSearchParams(hash);
+        const searchParams = new URLSearchParams(search);
+
+        const fbToken = hashParams.get("access_token") || searchParams.get("access_token");
+        const fbError =
+          hashParams.get("error_description") ||
+          searchParams.get("error_description") ||
+          hashParams.get("error") ||
+          searchParams.get("error");
+
+        if (fbToken) {
+          setIsFbConnecting(true);
+          window.history.replaceState(null, "", window.location.pathname);
+          fetch("/api/auth/facebook", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ accessToken: fbToken }),
+          })
+            .then((res) => res.json())
+            .then((data) => {
+              if (data.success) {
+                if (data.user) setCurrentUser(data.user);
+                if (data.pages && Array.isArray(data.pages)) setManagedPages(data.pages);
+                localStorage.setItem("vst_admin_session", JSON.stringify(data));
+                setIsLoggedIn(true);
+              } else {
+                setLoginError(data.error || "Facebook Login failed");
+              }
+            })
+            .catch((err) => {
+              console.error("Facebook token exchange error:", err);
+              setLoginError("Failed to connect with Facebook server");
+            })
+            .finally(() => {
+              setIsFbConnecting(false);
+            });
+        } else if (fbError) {
+          setLoginError(fbError);
+          window.history.replaceState(null, "", window.location.pathname);
+        }
       }
     } catch {}
     setIsCheckingSession(false);
@@ -196,57 +243,97 @@ export default function VSTAssistantApp() {
     setIsFbConnecting(true);
     setLoginError("");
 
-    if (!(window as any).FB) {
-      alert(
-        lang === "km"
-          ? "Facebook SDK កំពុងទាញយក... សូមរង់ចាំ ២ វិនាទី រួចចុចម្តងទៀត!"
-          : "Facebook SDK is initializing... Please try again in 2 seconds!"
+    const redirectUri =
+      typeof window !== "undefined"
+        ? window.location.origin
+        : "https://vst-assistant.vercel.app";
+    const fbOAuthUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=1424105379104638&redirect_uri=${encodeURIComponent(
+      redirectUri
+    )}&response_type=token&scope=public_profile,pages_show_list,pages_read_engagement,pages_messaging`;
+
+    const isMobile =
+      typeof navigator !== "undefined" &&
+      /iPhone|iPad|iPod|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(
+        navigator.userAgent
       );
-      setIsFbConnecting(false);
+
+    // On mobile browsers or if FB SDK is not available, redirect directly
+    if (isMobile || !(window as any).FB) {
+      window.location.href = fbOAuthUrl;
       return;
     }
 
-    (window as any).FB.login(
-      async (response: any) => {
-        if (response.authResponse && response.authResponse.accessToken) {
-          const userAccessToken = response.authResponse.accessToken;
-
-          try {
-            const apiRes = await fetch("/api/auth/facebook", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ accessToken: userAccessToken }),
-            });
-            const data = await apiRes.json();
-
-            if (data.success) {
-              if (data.user) {
-                setCurrentUser(data.user);
-              }
-              if (data.pages && Array.isArray(data.pages)) {
-                setManagedPages(data.pages);
-              }
-              localStorage.setItem("vst_admin_session", JSON.stringify(data));
-              setIsLoggedIn(true);
-            } else {
-              setLoginError(data.error || "Facebook Login failed");
-            }
-          } catch (err) {
-            console.error("Exchange token error:", err);
-            setLoginError("Failed to connect with Facebook server");
-          } finally {
-            setIsFbConnecting(false);
-          }
-        } else {
-          setIsFbConnecting(false);
-        }
-      },
-      {
-        scope:
-          "public_profile,pages_show_list,pages_messaging,pages_read_engagement,pages_manage_metadata",
-        return_scopes: true,
+    // On desktop, try FB.login popup with a 3.5-second safety timer
+    let finished = false;
+    const safetyTimer = setTimeout(() => {
+      if (!finished) {
+        // Fallback to direct redirect if popup was blocked or delayed
+        window.location.href = fbOAuthUrl;
       }
-    );
+    }, 3500);
+
+    try {
+      (window as any).FB.login(
+        async (response: any) => {
+          finished = true;
+          clearTimeout(safetyTimer);
+
+          if (response?.authResponse?.accessToken) {
+            const userAccessToken = response.authResponse.accessToken;
+
+            try {
+              const apiRes = await fetch("/api/auth/facebook", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ accessToken: userAccessToken }),
+              });
+              const data = await apiRes.json();
+
+              if (data.success) {
+                if (data.user) {
+                  setCurrentUser(data.user);
+                }
+                if (data.pages && Array.isArray(data.pages)) {
+                  setManagedPages(data.pages);
+                }
+                localStorage.setItem("vst_admin_session", JSON.stringify(data));
+                setIsLoggedIn(true);
+              } else {
+                setLoginError(data.error || "Facebook Login failed");
+              }
+            } catch (err) {
+              console.error("Exchange token error:", err);
+              setLoginError("Failed to connect with Facebook server");
+            } finally {
+              setIsFbConnecting(false);
+            }
+          } else {
+            setIsFbConnecting(false);
+            if (response?.status === "not_authorized") {
+              setLoginError(
+                lang === "km"
+                  ? "លោកអ្នកមិនទាន់បានអនុញ្ញាតសិទ្ធិ (Permissions) លើ Facebook ទេ"
+                  : "Facebook permissions not granted"
+              );
+            } else {
+              setLoginError(
+                lang === "km"
+                  ? "ការភ្ជាប់ Facebook ត្រូវបានបដិសេធ ឬបិទផ្ទាំង"
+                  : "Facebook connection canceled"
+              );
+            }
+          }
+        },
+        {
+          scope:
+            "public_profile,pages_show_list,pages_read_engagement,pages_messaging",
+          return_scopes: true,
+        }
+      );
+    } catch (err) {
+      clearTimeout(safetyTimer);
+      window.location.href = fbOAuthUrl;
+    }
   };
 
   const handleTogglePage = async (pageId: string, currentStatus: boolean) => {
@@ -511,6 +598,13 @@ export default function VSTAssistantApp() {
             </p>
           </div>
 
+          {/* Error Alert Display */}
+          {loginError && (
+            <div className="mb-4 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-center text-xs font-medium text-rose-300">
+              ⚠️ {loginError}
+            </div>
+          )}
+
           {/* Facebook Login Button */}
           <button
             type="button"
@@ -610,11 +704,6 @@ export default function VSTAssistantApp() {
               )}
             </button>
           </form>
-
-          {/* Quick Default Creds Hint */}
-          <div className="mt-4 rounded-xl border border-slate-800/80 bg-slate-800/30 p-2.5 text-center text-[11px] text-slate-400">
-            <span>🔑 {t.login.defaultHint}</span>
-          </div>
 
           <div className="mt-6 text-center text-xs text-slate-500">
             {t.login.copyright}
