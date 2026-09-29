@@ -455,7 +455,7 @@ export default function VSTAssistantApp() {
   // Bot configuration state
   const [selectedBotPageId, setSelectedBotPageId] = useState<string>("default");
   const [isLoadingBotSettings, setIsLoadingBotSettings] = useState(false);
-  const [commentKeyword, setCommentKeyword] = useState("តម្លៃ, price, ប៉ុន្មាន, order");
+  const [commentKeyword, setCommentKeyword] = useState("");
   const [commentReplyTemplate, setCommentReplyTemplate] = useState(
     "សួស្ដីបង! 😊 ផលិតផលសុខភាពនារីយើងខ្ញុំគុណភាពខ្ពស់ ផ្ដល់ទំនុកចិត្ត១០០%! ខ្ញុំបានផ្ញើព័ត៌មានលម្អិត និងប្រូម៉ូសិនជូនក្នុងប្រអប់សារ Inbox ហើយបង 💬✨"
   );
@@ -618,6 +618,11 @@ export default function VSTAssistantApp() {
         if (data.dm_template) {
           setDmWelcomeText(data.dm_template);
         }
+        if (typeof data.keywords === "string") {
+          setCommentKeyword(data.keywords);
+        } else {
+          setCommentKeyword("");
+        }
       }
     } catch (e) {
       console.error("Error loading settings:", e);
@@ -641,6 +646,7 @@ export default function VSTAssistantApp() {
           reply_templates: [commentReplyTemplate],
           auto_dm_enabled: autoSendDm,
           dm_template: dmWelcomeText,
+          keywords: commentKeyword,
         }),
       });
       setSavedSuccess(true);

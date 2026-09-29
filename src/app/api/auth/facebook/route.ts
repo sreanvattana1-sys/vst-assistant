@@ -12,9 +12,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    let userTokenToUse = accessToken;
+    const appId = process.env.FB_APP_ID || "1424105379104638";
+    const appSecret = process.env.FB_APP_SECRET;
+
+    if (appSecret) {
+      try {
+        const exchangeRes = await fetch(
+          `https://graph.facebook.com/v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${accessToken}`
+        );
+        const exchangeData = await exchangeRes.json();
+        if (exchangeData.access_token) {
+          userTokenToUse = exchangeData.access_token;
+          console.log("[Facebook Auth] Successfully exchanged for long-lived access token!");
+        }
+      } catch (exErr) {
+        console.warn("[Facebook Auth] Token exchange warning:", exErr);
+      }
+    }
+
     // 1. Fetch User Profile from Facebook Graph API
     const userRes = await fetch(
-      `https://graph.facebook.com/v21.0/me?fields=id,name,email,picture.width(200).height(200)&access_token=${accessToken}`
+      `https://graph.facebook.com/v21.0/me?fields=id,name,email,picture.width(200).height(200)&access_token=${userTokenToUse}`
     );
     const userData = await userRes.json();
 
@@ -28,7 +47,7 @@ export async function POST(req: NextRequest) {
 
     // 2. Fetch all Pages managed by this User
     const pagesRes = await fetch(
-      `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,category,picture.width(150).height(150),tasks&limit=100&access_token=${accessToken}`
+      `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,category,picture.width(150).height(150),tasks&limit=100&access_token=${userTokenToUse}`
     );
     const pagesData = await pagesRes.json();
 

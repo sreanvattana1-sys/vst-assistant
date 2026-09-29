@@ -24,6 +24,7 @@ interface PageConfig {
   templates: string[];
   autoDm: boolean;
   dmTemplate: string;
+  keywords?: string;
 }
 
 async function getPageConfig(pageId: string): Promise<PageConfig> {
@@ -39,7 +40,7 @@ async function getPageConfig(pageId: string): Promise<PageConfig> {
     const { data: rows } = await supabase
       .from("bot_settings")
       .select("*")
-      .in("id", [pageId, "default", "vst_members"]);
+      .in("id", [pageId, "default", "vst_members", "vst_keywords"]);
 
     if (Array.isArray(rows)) {
       const defaultRow = rows.find((r) => r.id === "default");
@@ -92,6 +93,25 @@ async function getPageConfig(pageId: string): Promise<PageConfig> {
           }
         } catch {}
       }
+
+      let keywords = "";
+      const kwRow = rows.find((r) => r.id === "vst_keywords");
+      if (kwRow?.dm_template) {
+        try {
+          const map = JSON.parse(kwRow.dm_template);
+          keywords = map[pageId] || map["default"] || "";
+        } catch {}
+      }
+
+      return {
+        isActive: masterActive && isPageActive,
+        token,
+        pageName: pageName || `Page ${pageId}`,
+        templates,
+        autoDm,
+        dmTemplate,
+        keywords,
+      };
     }
   } catch (e) {
     console.error(`[Webhook] Error getting config for page ${pageId}:`, e);
@@ -109,6 +129,7 @@ async function getPageConfig(pageId: string): Promise<PageConfig> {
     templates,
     autoDm,
     dmTemplate,
+    keywords: "",
   };
 }
 
@@ -234,6 +255,26 @@ export async function POST(req: NextRequest) {
                   }
                 } catch (dbErr) {
                   console.error("Supabase dedup check error:", dbErr);
+                }
+
+                // 🛑 CRITICAL CHECK 5: Keywords Filter
+                // If keywords are configured, only reply if comment matches at least one keyword.
+                // If keywords are empty (""), reply to ALL comments automatically!
+                const rawKeywords = pageConfig.keywords?.trim() || "";
+                if (rawKeywords.length > 0) {
+                  const keywordList = rawKeywords
+                    .split(",")
+                    .map((k: string) => k.trim().toLowerCase())
+                    .filter((k: string) => k.length > 0);
+
+                  if (keywordList.length > 0) {
+                    const commentLower = userComment.toLowerCase();
+                    const matches = keywordList.some((kw: string) => commentLower.includes(kw));
+                    if (!matches) {
+                      console.log(`[Webhook] Comment "${userComment}" on ${pageConfig.pageName} does not match keywords [${rawKeywords}]. Skipping.`);
+                      continue;
+                    }
+                  }
                 }
 
                 console.log(`[New Comment on ${pageConfig.pageName}] From: ${senderName || "Unknown"} (${senderId}), Comment: "${userComment}"`);

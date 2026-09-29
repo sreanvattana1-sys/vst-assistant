@@ -6,6 +6,26 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const pageId = searchParams.get("pageId") || "default";
 
+    // 1. Fetch keywords map from vst_keywords
+    let pageKeywords = "";
+    try {
+      const { data: kwData } = await supabase
+        .from("bot_settings")
+        .select("dm_template")
+        .eq("id", "vst_keywords")
+        .maybeSingle();
+
+      if (kwData?.dm_template) {
+        const keywordsMap = JSON.parse(kwData.dm_template);
+        if (typeof keywordsMap[pageId] === "string") {
+          pageKeywords = keywordsMap[pageId];
+        }
+      }
+    } catch (e) {
+      console.error("Error loading keywords map:", e);
+    }
+
+    // 2. Fetch page settings
     const { data } = await supabase
       .from("bot_settings")
       .select("*")
@@ -13,7 +33,10 @@ export async function GET(req: NextRequest) {
       .maybeSingle();
 
     if (data) {
-      return NextResponse.json(data);
+      return NextResponse.json({
+        ...data,
+        keywords: pageKeywords,
+      });
     }
 
     // Fallback: If no custom setting for this page, load default settings or generate intelligent fallback
@@ -40,6 +63,7 @@ export async function GET(req: NextRequest) {
         : [fallbackReply],
       auto_dm_enabled: defaultData ? defaultData.auto_dm_enabled !== false : true,
       dm_template: fallbackDm,
+      keywords: pageKeywords,
     });
   } catch (error) {
     console.error("Error fetching bot settings:", error);
@@ -56,8 +80,39 @@ export async function POST(req: NextRequest) {
       reply_templates,
       auto_dm_enabled,
       dm_template,
+      keywords,
     } = body;
 
+    // 1. Save keywords into vst_keywords map
+    if (typeof keywords === "string") {
+      try {
+        const { data: kwData } = await supabase
+          .from("bot_settings")
+          .select("dm_template")
+          .eq("id", "vst_keywords")
+          .maybeSingle();
+
+        let keywordsMap: Record<string, string> = {};
+        if (kwData?.dm_template) {
+          try {
+            keywordsMap = JSON.parse(kwData.dm_template);
+          } catch {}
+        }
+
+        keywordsMap[pageId] = keywords.trim();
+
+        await supabase.from("bot_settings").upsert({
+          id: "vst_keywords",
+          is_active: true,
+          dm_template: JSON.stringify(keywordsMap),
+          updated_at: new Date().toISOString(),
+        });
+      } catch (kwErr) {
+        console.error("Error saving keywords to vst_keywords:", kwErr);
+      }
+    }
+
+    // 2. Save page settings
     const { data, error } = await supabase
       .from("bot_settings")
       .upsert({
@@ -75,7 +130,13 @@ export async function POST(req: NextRequest) {
       throw error;
     }
 
-    return NextResponse.json({ success: true, settings: data });
+    return NextResponse.json({
+      success: true,
+      settings: {
+        ...data,
+        keywords: typeof keywords === "string" ? keywords.trim() : "",
+      },
+    });
   } catch (error) {
     console.error("Error saving bot settings:", error);
     return NextResponse.json({ error: "Failed to save settings" }, { status: 500 });
