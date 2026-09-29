@@ -203,10 +203,11 @@ export async function GET(req: NextRequest) {
 
               // Reply if no reply yet and older than 35s
               if (!hasPageReply && commentAgeSec > 35) {
-                const userTag =
-                  senderName && senderName !== "Customer" && senderName !== "អតិថិជន" && senderName !== "អតិថិជន Facebook"
-                    ? `បង ${senderName}`
-                    : "បង";
+                const userTag = senderId
+                  ? `@[${senderId}]`
+                  : senderName && senderName !== "Customer" && senderName !== "អតិថិជន" && senderName !== "អតិថិជន Facebook"
+                  ? `@${senderName}`
+                  : "បង";
 
                 const replyTextTemplate =
                   page.replyTemplate ||

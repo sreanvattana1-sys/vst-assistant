@@ -108,21 +108,22 @@ async function getPageConfig(pageId: string): Promise<PageConfig> {
   };
 }
 
-function getCommentReply(pageId: string, pageName: string, senderName?: string, customTemplates?: string[]) {
-  const displayName =
-    senderName && senderName !== "Customer" && senderName !== "អតិថិជន" && senderName !== "អតិថិជន Facebook"
-      ? `បង ${senderName}`
-      : "បង";
+function getCommentReply(pageId: string, pageName: string, senderName?: string, customTemplates?: string[], senderId?: string) {
+  const mentionTag = senderId
+    ? `@[${senderId}]`
+    : senderName && senderName !== "Customer" && senderName !== "អតិថិជន" && senderName !== "អតិថិជន Facebook"
+    ? `@${senderName}`
+    : "បង";
 
   const defaultTemplates = [
-    `សួស្ដី${displayName ? " " + displayName : ""}! 😊 អរគុណសម្រាប់ការចាប់អារម្មណ៍លើទំព័រ ${pageName}។ ខ្ញុំបានផ្ញើព័ត៌មានលម្អិត និងតម្លៃពិសេសជូនបងហើយណា 💬👉 https://m.me/${pageId}`,
-    `ជម្រាបសួរ${displayName ? " " + displayName : ""}! 🌸 ព័ត៌មាន និងប្រូម៉ូសិនពិសេសពី ${pageName} ត្រូវបានរៀបចំជូនបងរួចរាល់ហើយ សូមចុចត្រង់នេះដើម្បីឆាតមកកាន់ Inbox 🥰👉 https://m.me/${pageId}`,
-    `សួស្ដី${displayName ? " " + displayName : ""}! ✨ ផលិតផលគុណភាពខ្ពស់ ផ្ដល់ទំនុកចិត្ត១០០%។ សូមចុចត្រង់នេះដើម្បីទទួលការប្រឹក្សាភ្លាមៗណា៎បង 💌👉 https://m.me/${pageId}`,
+    `សួស្ដី ${mentionTag}! 😊 អរគុណសម្រាប់ការចាប់អារម្មណ៍លើទំព័រ ${pageName}។ ខ្ញុំបានផ្ញើព័ត៌មានលម្អិត និងតម្លៃពិសេសជូនបងហើយណា 💬👉 https://m.me/${pageId}`,
+    `ជម្រាបសួរ ${mentionTag}! 🌸 ព័ត៌មាន និងប្រូម៉ូសិនពិសេសពី ${pageName} ត្រូវបានរៀបចំជូនបងរួចរាល់ហើយ សូមចុចត្រង់នេះដើម្បីឆាតមកកាន់ Inbox 🥰👉 https://m.me/${pageId}`,
+    `សួស្ដី ${mentionTag}! ✨ ផលិតផលគុណភាពខ្ពស់ ផ្ដល់ទំនុកចិត្ត១០០%។ សូមចុចត្រង់នេះដើម្បីទទួលការប្រឹក្សាភ្លាមៗណា៎បង 💌👉 https://m.me/${pageId}`,
   ];
 
   const pool = customTemplates && customTemplates.length > 0 ? customTemplates : defaultTemplates;
   const picked = pool[Math.floor(Math.random() * pool.length)];
-  return picked.replace(/{name}/g, displayName);
+  return picked.replace(/{name}/g, mentionTag);
 }
 
 export async function GET(req: NextRequest) {
@@ -232,7 +233,7 @@ export async function POST(req: NextRequest) {
                 console.log(`[New Comment on ${pageConfig.pageName}] From: ${senderName || "Unknown"} (${senderId}), Comment: "${userComment}"`);
 
                 // A. Auto Reply on Comment using page-specific token
-                const commentText = getCommentReply(pageId, pageConfig.pageName, senderName, pageConfig.templates);
+                const commentText = getCommentReply(pageId, pageConfig.pageName, senderName, pageConfig.templates, senderId);
                 const replyRes = await replyToComment({
                   pageAccessToken: pageConfig.token,
                   commentId: commentId,
