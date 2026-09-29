@@ -67,28 +67,33 @@ export default function VSTAssistantApp() {
       category?: string;
       picture?: string | null;
       isActive: boolean;
+      ownerName?: string;
     }>
   >([
     {
       id: "955747057621489",
       name: "Kidney Pro ឃីដនី ប្រូ",
       category: "សុខភាព & សម្រស់ (Health/Beauty)",
+      ownerName: "VST Super Admin",
       isActive: true,
     },
     {
       id: "101267342561819",
       name: "Emmi អេមមី",
       category: "ផលិតផលនារី (Women Care)",
+      ownerName: "VST Super Admin",
       isActive: true,
     },
     {
       id: "985673367962860",
       name: "Emmi By CEO",
       category: "អាជីវកម្មផ្លូវការ (Official Brand)",
+      ownerName: "VST Super Admin",
       isActive: true,
     },
   ]);
 
+  const [pageOwnerFilter, setPageOwnerFilter] = useState("all");
   const [isFbConnecting, setIsFbConnecting] = useState(false);
 
   // Initialize Facebook JavaScript SDK
@@ -130,6 +135,20 @@ export default function VSTAssistantApp() {
   useEffect(() => {
     fetchPages();
   }, []);
+
+  // Guard: if member / non-admin user is on admin tab, redirect to dashboard
+  useEffect(() => {
+    if (currentUser.loginType !== "admin" && activeTab === "admin") {
+      setActiveTab("dashboard");
+    }
+  }, [currentUser.loginType, activeTab]);
+
+  // When Super Admin logs in, fetch all platform & member pages
+  useEffect(() => {
+    if (isLoggedIn && currentUser.loginType === "admin") {
+      fetchPages();
+    }
+  }, [isLoggedIn, currentUser.loginType]);
 
   useEffect(() => {
     try {
@@ -800,12 +819,16 @@ export default function VSTAssistantApp() {
             );
           })}
 
-          <div className="pt-4 pb-1 px-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            {t.nav.adminHeader}
-          </div>
+          {currentUser.loginType === "admin" && (
+            <div className="pt-4 pb-1 px-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              {t.nav.adminHeader}
+            </div>
+          )}
 
           {[
-            { id: "admin", label: t.nav.admin, icon: ShieldCheck },
+            ...(currentUser.loginType === "admin"
+              ? [{ id: "admin", label: t.nav.admin, icon: ShieldCheck }]
+              : []),
             { id: "reports", label: t.nav.reports, icon: TrendingUp },
           ].map((item) => {
             const Icon = item.icon;
@@ -1332,8 +1355,72 @@ export default function VSTAssistantApp() {
                 </button>
               </div>
 
+              {/* Super Admin Owner Filter */}
+              {currentUser.loginType === "admin" && (
+                <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-800 bg-slate-900/60 p-3">
+                  <span className="text-xs text-slate-400 font-medium pl-1">
+                    {lang === "km" ? "តម្រៀបតាមម្ចាស់៖" : "Filter by Owner:"}
+                  </span>
+                  <button
+                    onClick={() => setPageOwnerFilter("all")}
+                    className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
+                      pageOwnerFilter === "all"
+                        ? "bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20"
+                        : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                    }`}
+                  >
+                    {lang === "km" ? "ទាំងអស់" : "All"} ({managedPages.length})
+                  </button>
+                  <button
+                    onClick={() => setPageOwnerFilter("admin")}
+                    className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
+                      pageOwnerFilter === "admin"
+                        ? "bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20"
+                        : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                    }`}
+                  >
+                    👑 Super Admin
+                  </button>
+                  {Array.from(
+                    new Set(
+                      managedPages
+                        .map((p) => p.ownerName)
+                        .filter(
+                          (name) => name && !name.toLowerCase().includes("admin")
+                        )
+                    )
+                  ).map((ownerName) => (
+                    <button
+                      key={ownerName}
+                      onClick={() => setPageOwnerFilter(ownerName!)}
+                      className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
+                        pageOwnerFilter === ownerName
+                          ? "bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20"
+                          : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                      }`}
+                    >
+                      👤 {ownerName}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {managedPages.map((page, i) => (
+                {managedPages
+                  .filter((page) => {
+                    if (currentUser.loginType !== "admin") return true;
+                    if (pageOwnerFilter === "all") return true;
+                    if (pageOwnerFilter === "admin") {
+                      return (
+                        !page.ownerName ||
+                        page.ownerName.toLowerCase().includes("admin")
+                      );
+                    }
+                    return page.ownerName
+                      ?.toLowerCase()
+                      .includes(pageOwnerFilter.toLowerCase());
+                  })
+                  .map((page, i) => (
                   <div
                     key={page.id || i}
                     className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 flex flex-col justify-between transition hover:border-slate-700/80 hover:bg-slate-900/60"
@@ -1378,6 +1465,12 @@ export default function VSTAssistantApp() {
                           <p className="text-[11px] text-slate-400 mt-0.5">
                             {page.category || "Facebook Page"}
                           </p>
+                          {currentUser.loginType === "admin" && page.ownerName && (
+                            <span className="inline-flex items-center gap-1 rounded bg-slate-800 px-2 py-0.5 text-[10px] text-cyan-300 border border-slate-700 mt-1.5 font-medium">
+                              <span>{page.ownerName.toLowerCase().includes("admin") ? "👑" : "👤"}</span>
+                              <span>{page.ownerName}</span>
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1652,7 +1745,10 @@ export default function VSTAssistantApp() {
 
                               <td className="p-3.5 text-right">
                                 <button
-                                  onClick={() => setActiveTab("pages")}
+                                  onClick={() => {
+                                    setPageOwnerFilter(m.name || "all");
+                                    setActiveTab("pages");
+                                  }}
                                   className="text-xs font-medium text-cyan-400 hover:text-cyan-300 hover:underline"
                                 >
                                   {lang === "km" ? "មើល Pages" : "View Pages"} →
