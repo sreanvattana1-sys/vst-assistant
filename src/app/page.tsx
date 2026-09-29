@@ -416,6 +416,8 @@ export default function VSTAssistantApp() {
   const t = translations[lang];
 
   // Bot configuration state
+  const [selectedBotPageId, setSelectedBotPageId] = useState<string>("default");
+  const [isLoadingBotSettings, setIsLoadingBotSettings] = useState(false);
   const [commentKeyword, setCommentKeyword] = useState("តម្លៃ, price, ប៉ុន្មាន, order");
   const [commentReplyTemplate, setCommentReplyTemplate] = useState(
     "សួស្ដីបង! 😊 ផលិតផលសុខភាពនារីយើងខ្ញុំគុណភាពខ្ពស់ ផ្ដល់ទំនុកចិត្ត១០០%! ខ្ញុំបានផ្ញើព័ត៌មានលម្អិត និងប្រូម៉ូសិនជូនក្នុងប្រអប់សារ Inbox ហើយបង 💬✨"
@@ -435,7 +437,7 @@ export default function VSTAssistantApp() {
   >([
     {
       from: "bot",
-      text: "សួស្ដី! 👋 ខ្ញុំជា VST Support Bot។\nខ្ញុំជួយឆ្លើយសំណួរដោយបែងចែកតាមប្រធានបទងាយស្រួលរក៖\n\n📘 ជំនួយ Facebook Page & Permissions\n⚙️ ការកំណត់ Bot Auto-Reply & Keywords\n🌿 ផលិតផល & ចំណេះដឹងសុខភាពនារី\n👥 គណនីសមាជិក & Plan\n\nជ្រើសរើសប្រធានបទខាងលើ ឬវាយសំណួររបស់អ្នកបានភ្លាមៗ!",
+      text: "សួស្ដី! 👋 ខ្ញុំជា VST Support Bot。\nខ្ញុំជួយឆ្លើយសំណួរដោយបែងចែកតាមប្រធានបទងាយស្រួលរក៖\n\n📘 ជំនួយ Facebook Page & Permissions\n⚙️ ការកំណត់ Bot Auto-Reply & Keywords\n🌿 ផលិតផល & ចំណេះដឹងសុខភាពនារី\n👥 គណនីសមាជិក & Plan\n\nជ្រើសរើសប្រធានបទខាងលើ ឬវាយសំណួររបស់អ្នកបានភ្លាមៗ!",
     },
   ]);
 
@@ -490,31 +492,35 @@ export default function VSTAssistantApp() {
     }
   }, [activeTab]);
 
-  useEffect(() => {
-    async function loadSettings() {
-      try {
-        const res = await fetch("/api/bot-settings");
-        const data = await res.json();
-        if (data) {
-          if (data.reply_templates && data.reply_templates.length > 0) {
-            setCommentReplyTemplate(data.reply_templates[0]);
-          }
-          if (typeof data.is_active === "boolean") {
-            setBotActive(data.is_active);
-          }
-          if (typeof data.auto_dm_enabled === "boolean") {
-            setAutoSendDm(data.auto_dm_enabled);
-          }
-          if (data.dm_template) {
-            setDmWelcomeText(data.dm_template);
-          }
+  const loadSettingsForPage = async (pageId: string) => {
+    setIsLoadingBotSettings(true);
+    try {
+      const res = await fetch(`/api/bot-settings?pageId=${pageId}`);
+      const data = await res.json();
+      if (data) {
+        if (data.reply_templates && data.reply_templates.length > 0) {
+          setCommentReplyTemplate(data.reply_templates[0]);
         }
-      } catch (e) {
-        console.error("Error loading settings:", e);
+        if (typeof data.is_active === "boolean") {
+          setBotActive(data.is_active);
+        }
+        if (typeof data.auto_dm_enabled === "boolean") {
+          setAutoSendDm(data.auto_dm_enabled);
+        }
+        if (data.dm_template) {
+          setDmWelcomeText(data.dm_template);
+        }
       }
+    } catch (e) {
+      console.error("Error loading settings:", e);
+    } finally {
+      setIsLoadingBotSettings(false);
     }
-    loadSettings();
-  }, []);
+  };
+
+  useEffect(() => {
+    loadSettingsForPage(selectedBotPageId);
+  }, [selectedBotPageId]);
 
   const handleSaveBotSettings = async () => {
     try {
@@ -522,6 +528,7 @@ export default function VSTAssistantApp() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          pageId: selectedBotPageId,
           is_active: botActive,
           reply_templates: [commentReplyTemplate],
           auto_dm_enabled: autoSendDm,
@@ -1254,105 +1261,202 @@ export default function VSTAssistantApp() {
           {activeTab === "bot" && (
             <div className="max-w-4xl space-y-6">
               <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6">
-                <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
                   <div>
-                    <h3 className="text-base font-bold text-white">
-                      💬 {t.settings.title}
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <span>💬</span>
+                      <span>{t.settings.title}</span>
                     </h3>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      {t.settings.subtitle}
+                      {lang === "km"
+                        ? "កំណត់សារឆ្លើយតប Comment & Inbox ស្វ័យប្រវត្តតាម Page នីមួយៗស្របតាមផលិតផលដែលលក់"
+                        : t.settings.subtitle}
                     </p>
                   </div>
-                  <span className="rounded-full bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-400 border border-cyan-500/20">
-                    Auto Active
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-400 border border-cyan-500/20">
+                      {selectedBotPageId === "default"
+                        ? lang === "km" ? "🌐 ការកំណត់រួម" : "Global Config"
+                        : lang === "km" ? "🎯 តាមផេកនីមួយៗ" : "Per-Page Config"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Page Selector Tabs */}
+                <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                    <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                      <span>📌 {lang === "km" ? "ជ្រើសរើសទំព័រ Facebook ដែលត្រូវកំណត់៖" : "Select Facebook Page to Configure:"}</span>
+                    </span>
+                    <span className="text-[11px] text-cyan-400 font-medium">
+                      {lang === "km" ? "កំពុងកំណត់៖ " : "Editing: "}
+                      <span className="font-bold text-white underline">
+                        {selectedBotPageId === "default"
+                          ? lang === "km" ? "ទូទៅ (Global)" : "Default (Global)"
+                          : managedPages.find((p) => p.id === selectedBotPageId)?.name || selectedBotPageId}
+                      </span>
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedBotPageId("default")}
+                      className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition ${
+                        selectedBotPageId === "default"
+                          ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md shadow-cyan-500/20 ring-1 ring-cyan-400"
+                          : "bg-slate-800/80 text-slate-300 hover:bg-slate-800 hover:text-white"
+                      }`}
+                    >
+                      <span>🌐</span>
+                      <span>{lang === "km" ? "ទូទៅ (Global Default)" : "Default (All Pages)"}</span>
+                    </button>
+
+                    {managedPages.map((page) => (
+                      <button
+                        key={page.id}
+                        type="button"
+                        onClick={() => setSelectedBotPageId(page.id)}
+                        className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition ${
+                          selectedBotPageId === page.id
+                            ? "bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/20 ring-1 ring-cyan-400"
+                            : "bg-slate-800/80 text-slate-300 hover:bg-slate-800 hover:text-white"
+                        }`}
+                      >
+                        {page.picture ? (
+                          <img
+                            src={page.picture}
+                            alt=""
+                            className="h-4 w-4 rounded-full object-cover"
+                          />
+                        ) : (
+                          <span className="h-4 w-4 rounded-full bg-cyan-500/20 text-[10px] flex items-center justify-center text-cyan-300 font-bold">
+                            {page.name.charAt(0)}
+                          </span>
+                        )}
+                        <span className="truncate max-w-[150px]">{page.name}</span>
+                        {page.isActive ? (
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" title="Active" />
+                        ) : (
+                          <span className="h-1.5 w-1.5 rounded-full bg-slate-500" title="Paused" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="mt-5 space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                      {t.settings.keywordsLabel}
-                    </label>
-                    <input
-                      type="text"
-                      value={commentKeyword}
-                      onChange={(e) => setCommentKeyword(e.target.value)}
-                      placeholder={t.settings.keywordsPlaceholder}
-                      className="w-full rounded-xl border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-cyan-500"
-                    />
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      {t.settings.keywordsHint}
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                      {t.settings.replyTemplateLabel}
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={commentReplyTemplate}
-                      onChange={(e) => setCommentReplyTemplate(e.target.value)}
-                      className="w-full rounded-xl border border-slate-700 bg-slate-800/60 p-4 text-sm text-white placeholder-slate-500 outline-none focus:border-cyan-500"
-                    />
-                    <p className="text-[11px] text-cyan-400/80 mt-1">
-                      {t.settings.tagHint}
-                    </p>
-                  </div>
-
-                  {/* Auto DM checkbox */}
-                  <div className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-800/30 p-4">
-                    <div>
-                      <div className="text-sm font-semibold text-white">
-                        {t.settings.autoDmTitle}
-                      </div>
-                      <div className="text-xs text-slate-400 mt-0.5">
-                        {t.settings.autoDmDesc}
-                      </div>
+                  {isLoadingBotSettings ? (
+                    <div className="py-12 text-center text-xs text-slate-400">
+                      <span className="animate-spin inline-block mr-2">⏳</span>
+                      {lang === "km" ? "កំពុងទាញយកការកំណត់..." : "Loading settings..."}
                     </div>
-                    <button
-                      onClick={() => setAutoSendDm(!autoSendDm)}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${
-                        autoSendDm ? "bg-cyan-500" : "bg-slate-700"
-                      }`}
-                    >
-                      <span
-                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ${
-                          autoSendDm ? "translate-x-4" : "translate-x-0"
-                        }`}
-                      />
-                    </button>
-                  </div>
+                  ) : (
+                    <>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                          {t.settings.keywordsLabel}
+                        </label>
+                        <input
+                          type="text"
+                          value={commentKeyword}
+                          onChange={(e) => setCommentKeyword(e.target.value)}
+                          placeholder={t.settings.keywordsPlaceholder}
+                          className="w-full rounded-xl border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-cyan-500"
+                        />
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          {t.settings.keywordsHint}
+                        </p>
+                      </div>
 
-                  {autoSendDm && (
-                    <div className="pl-4 border-l-2 border-cyan-500/40">
-                      <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                        {t.settings.dmTemplateLabel}
-                      </label>
-                      <textarea
-                        rows={3}
-                        value={dmWelcomeText}
-                        onChange={(e) => setDmWelcomeText(e.target.value)}
-                        className="w-full rounded-xl border border-slate-700 bg-slate-800/60 p-4 text-sm text-white placeholder-slate-500 outline-none focus:border-cyan-500"
-                      />
-                    </div>
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="block text-xs font-semibold text-slate-300">
+                            {t.settings.replyTemplateLabel}
+                          </label>
+                          <span className="text-[11px] text-cyan-400">
+                            {selectedBotPageId !== "default"
+                              ? managedPages.find((p) => p.id === selectedBotPageId)?.name
+                              : "Global"}
+                          </span>
+                        </div>
+                        <textarea
+                          rows={3}
+                          value={commentReplyTemplate}
+                          onChange={(e) => setCommentReplyTemplate(e.target.value)}
+                          className="w-full rounded-xl border border-slate-700 bg-slate-800/60 p-4 text-sm text-white placeholder-slate-500 outline-none focus:border-cyan-500 font-sans"
+                        />
+                        <p className="text-[11px] text-cyan-400/80 mt-1">
+                          {t.settings.tagHint} (ឧ. ប្រើ &#123;name&#125; សម្រាប់ Mention ឈ្មោះភ្ញៀវ)
+                        </p>
+                      </div>
+
+                      {/* Auto DM checkbox */}
+                      <div className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-800/30 p-4">
+                        <div>
+                          <div className="text-sm font-semibold text-white">
+                            {t.settings.autoDmTitle}
+                          </div>
+                          <div className="text-xs text-slate-400 mt-0.5">
+                            {t.settings.autoDmDesc}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setAutoSendDm(!autoSendDm)}
+                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${
+                            autoSendDm ? "bg-cyan-500" : "bg-slate-700"
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ${
+                              autoSendDm ? "translate-x-4" : "translate-x-0"
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      {autoSendDm && (
+                        <div className="pl-4 border-l-2 border-cyan-500/40">
+                          <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                            {t.settings.dmTemplateLabel}
+                          </label>
+                          <textarea
+                            rows={3}
+                            value={dmWelcomeText}
+                            onChange={(e) => setDmWelcomeText(e.target.value)}
+                            className="w-full rounded-xl border border-slate-700 bg-slate-800/60 p-4 text-sm text-white placeholder-slate-500 outline-none focus:border-cyan-500 font-sans"
+                          />
+                        </div>
+                      )}
+
+                      <div className="pt-2 flex items-center justify-between">
+                        <button
+                          type="button"
+                          onClick={handleSaveBotSettings}
+                          className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-cyan-500/20 hover:from-blue-500 hover:to-cyan-500 transition"
+                        >
+                          <span>💾</span>
+                          <span>
+                            {lang === "km"
+                              ? `រក្សាទុកការកំណត់សម្រាប់ ${
+                                  selectedBotPageId === "default"
+                                    ? "ទូទៅ (Global)"
+                                    : managedPages.find((p) => p.id === selectedBotPageId)?.name || "Page"
+                                }`
+                              : t.settings.saveBtn}
+                          </span>
+                        </button>
+
+                        {savedSuccess && (
+                          <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5 bg-emerald-500/10 px-3 py-1.5 rounded-xl border border-emerald-500/20">
+                            <CheckCircle2 className="h-4 w-4" />
+                            <span>{t.savedSuccess}</span>
+                          </span>
+                        )}
+                      </div>
+                    </>
                   )}
-
-                  <div className="pt-2 flex items-center justify-between">
-                    <button
-                      onClick={handleSaveBotSettings}
-                      className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-cyan-500/20 hover:from-blue-500 hover:to-cyan-500"
-                    >
-                      <span>{t.settings.saveBtn}</span>
-                    </button>
-
-                    {savedSuccess && (
-                      <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
-                        <CheckCircle2 className="h-4 w-4" />
-                        <span>{t.savedSuccess}</span>
-                      </span>
-                    )}
-                  </div>
                 </div>
               </div>
             </div>
