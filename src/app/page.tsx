@@ -297,7 +297,7 @@ export default function VSTAssistantApp() {
         ? window.location.origin
         : "https://vst-assistant.vercel.app";
     const scopes =
-      "public_profile,pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_posts,pages_manage_engagement,pages_manage_metadata,pages_messaging";
+      "public_profile,pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_engagement,pages_manage_metadata,pages_messaging";
     const fbOAuthUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=1424105379104638&redirect_uri=${encodeURIComponent(
       redirectUri
     )}&response_type=token&auth_type=rerequest&scope=${scopes}`;
