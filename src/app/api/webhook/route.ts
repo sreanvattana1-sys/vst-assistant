@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { replyToComment, sendPrivateReply, sendMessengerMessage } from "@/lib/facebook";
+import { replyToComment, sendPrivateReply } from "@/lib/facebook";
 import { supabase } from "@/lib/supabase";
 import { readFile } from "fs/promises";
 import path from "path";
@@ -165,23 +165,25 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
-        // Messenger incoming message
+        // Messenger incoming message:
+        // Do NOT auto-reply to incoming Messenger chat messages!
+        // Bot only triggers 1 Private DM per Comment on Posts/Reels.
+        // Once the customer is in Messenger, human admins/agents take over the chat.
         if (entry.messaging) {
           for (const event of entry.messaging) {
             const senderId = event.sender?.id;
             const messageText = event.message?.text;
 
             if (senderId && messageText && !event.message?.is_echo && senderId !== pageId && senderId !== DEFAULT_PAGE_ID) {
-              console.log(`[Messenger Event] Page: ${pageId}, Sender: ${senderId}, Text: "${messageText}"`);
+              console.log(`[Messenger Chat Received] Page: ${pageId}, Sender: ${senderId}, Text: "${messageText}". (No bot auto-reply; manual chat only).`);
 
-              const replyText =
-                `សូមស្វាគមន៍មកកាន់ ${pageConfig.pageName} 🌸! តើបងមានបញ្ហាសុខភាព ឬចង់បានការប្រឹក្សាលើផលិតផលណាខ្លះដែរ? ខ្ញុំរីករាយជួយជានិច្ច! 🥰`;
-
-              await sendMessengerMessage({
-                pageAccessToken: pageConfig.token,
-                recipientId: senderId,
-                message: replyText,
-              });
+              // Update customer's last contact timestamp in Supabase CRM
+              try {
+                await supabase
+                  .from("customers")
+                  .update({ last_contact: new Date().toISOString() })
+                  .eq("fb_user_id", senderId);
+              } catch {}
             }
           }
         }
