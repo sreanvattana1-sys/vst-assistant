@@ -63,6 +63,54 @@ export async function POST(req: NextRequest) {
           { onConflict: "id" }
         );
       }
+
+      // 4. Update connected members list in Supabase
+      try {
+        const { data: memberData } = await supabase
+          .from("bot_settings")
+          .select("dm_template")
+          .eq("id", "vst_members")
+          .maybeSingle();
+
+        let membersList: any[] = [];
+        if (memberData && memberData.dm_template) {
+          try {
+            membersList = JSON.parse(memberData.dm_template);
+          } catch {}
+        }
+
+        const existingIndex = membersList.findIndex(
+          (m: any) => m.id === userData.id || m.name === userData.name
+        );
+
+        const memberEntry = {
+          id: userData.id,
+          name: userData.name,
+          email: userData.email || null,
+          picture: userData.picture?.data?.url || null,
+          role: "Member / Tester",
+          loginType: "Facebook OAuth",
+          pagesCount: formattedPages.length,
+          pages: formattedPages.map((p: any) => ({ id: p.id, name: p.name })),
+          lastLogin: new Date().toISOString(),
+          status: "Active",
+        };
+
+        if (existingIndex >= 0) {
+          membersList[existingIndex] = { ...membersList[existingIndex], ...memberEntry };
+        } else {
+          membersList.push(memberEntry);
+        }
+
+        await supabase.from("bot_settings").upsert({
+          id: "vst_members",
+          is_active: true,
+          dm_template: JSON.stringify(membersList),
+          updated_at: new Date().toISOString(),
+        });
+      } catch (memErr) {
+        console.error("Member tracking error:", memErr);
+      }
     } catch (dbErr) {
       console.error("Supabase pages sync warning:", dbErr);
     }

@@ -10,6 +10,7 @@ import {
   Users,
   FileText,
   ShieldCheck,
+  Shield,
   TrendingUp,
   Bell,
   CheckCircle2,
@@ -410,6 +411,32 @@ export default function VSTAssistantApp() {
   useEffect(() => {
     if (activeTab === "customers" || activeTab === "reports") {
       fetchCustomers();
+    }
+  }, [activeTab]);
+
+  // Members & Users Management state (Super Admin)
+  const [membersList, setMembersList] = useState<any[]>([]);
+  const [isLoadingMembers, setIsLoadingMembers] = useState(false);
+  const [membersSearchQuery, setMembersSearchQuery] = useState("");
+
+  const fetchMembers = async () => {
+    setIsLoadingMembers(true);
+    try {
+      const res = await fetch("/api/members");
+      const data = await res.json();
+      if (data.members && Array.isArray(data.members)) {
+        setMembersList(data.members);
+      }
+    } catch (e) {
+      console.error("Failed to load members:", e);
+    } finally {
+      setIsLoadingMembers(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "admin") {
+      fetchMembers();
     }
   }, [activeTab]);
 
@@ -1395,53 +1422,248 @@ export default function VSTAssistantApp() {
             </div>
           )}
 
-          {/* TAB 4: ADMIN MANAGEMENT */}
+          {/* TAB 4: ADMIN MANAGEMENT (LIVE MEMBERS & FB USERS) */}
           {activeTab === "admin" && (
-            <div className="space-y-6 max-w-4xl">
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6">
-                <h3 className="text-base font-bold text-white mb-2">
-                  👑 ផ្ទាំងគ្រប់គ្រង Super Admin (Owner Dashboard)
-                </h3>
-                <p className="text-xs text-slate-400 mb-6">
-                  អ្នកជាម្ចាស់ Platform មានសិទ្ធិមើលការប្រើប្រាស់របស់សមាជិកទាំងអស់ បន្ថែមសមាជិក និងកំណត់កម្រិត Plan
-                </p>
+            <div className="space-y-6 max-w-6xl">
+              {/* Header Banner */}
+              <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900/80 via-[#07132b] to-[#040b18] p-6 shadow-2xl backdrop-blur-xl">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-800/80">
+                  <div>
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-400 p-2.5 text-slate-950 shadow-lg shadow-amber-500/20">
+                        <Shield className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-white tracking-tight">
+                          {t.adminTab.title}
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {t.adminTab.subtitle}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs text-slate-300">
-                    <thead className="bg-slate-800/60 text-slate-400 uppercase text-[10px]">
-                      <tr>
-                        <th className="p-3">ឈ្មោះសមាជិក</th>
-                        <th className="p-3">ចំនួន Pages</th>
-                        <th className="p-3">Plan កម្រិត</th>
-                        <th className="p-3">ស្ថានភាព</th>
-                        <th className="p-3 text-right">សកម្មភាព</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800">
-                      {[
-                        { name: "Sokha (Owner)", pages: "3 Pages", plan: "Unlimited Pro", status: "Active" },
-                        { name: "Dara Chan (Seller)", pages: "2 Pages", plan: "Pro Tier", status: "Active" },
-                        { name: "Sreyleak Kim (Seller)", pages: "1 Page", plan: "Free Tier", status: "Active" },
-                      ].map((member, i) => (
-                        <tr key={i} className="hover:bg-slate-800/30">
-                          <td className="p-3 font-semibold text-white">{member.name}</td>
-                          <td className="p-3 text-slate-400">{member.pages}</td>
-                          <td className="p-3">
-                            <span className="rounded-md bg-blue-500/10 px-2 py-1 text-cyan-300 font-medium">
-                              {member.plan}
-                            </span>
-                          </td>
-                          <td className="p-3 text-emerald-400 font-medium">{member.status}</td>
-                          <td className="p-3 text-right">
-                            <button className="text-xs text-cyan-400 hover:underline">
-                              Manage
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={fetchMembers}
+                      disabled={isLoadingMembers}
+                      className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/80 px-4 py-2.5 text-xs font-medium text-slate-200 hover:bg-slate-700 transition"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isLoadingMembers ? "animate-spin text-cyan-400" : ""}`} />
+                      <span>{isLoadingMembers ? t.saving : t.adminTab.refreshBtn}</span>
+                    </button>
+                  </div>
                 </div>
+
+                {/* Stat Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-6">
+                  <div className="rounded-2xl border border-slate-800/80 bg-slate-800/30 p-4">
+                    <span className="text-[11px] font-medium text-slate-400">
+                      {t.adminTab.totalMembers}
+                    </span>
+                    <div className="mt-2 flex items-baseline gap-2">
+                      <span className="text-2xl font-extrabold text-white">
+                        {membersList.length}
+                      </span>
+                      <span className="text-[10px] text-emerald-400">Accounts</span>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-800/80 bg-slate-800/30 p-4">
+                    <span className="text-[11px] font-medium text-slate-400">
+                      {t.adminTab.totalPages}
+                    </span>
+                    <div className="mt-2 flex items-baseline gap-2">
+                      <span className="text-2xl font-extrabold text-cyan-400">
+                        {managedPages.length}
+                      </span>
+                      <span className="text-[10px] text-cyan-300">Pages Live</span>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-800/80 bg-slate-800/30 p-4">
+                    <span className="text-[11px] font-medium text-slate-400">
+                      {lang === "km" ? "គណនីកំពុងដំណើរការ" : "Active Sessions"}
+                    </span>
+                    <div className="mt-2 flex items-baseline gap-2">
+                      <span className="text-2xl font-extrabold text-emerald-400">
+                        {membersList.filter((m) => m.status === "Active").length || 1}
+                      </span>
+                      <span className="text-[10px] text-emerald-300">Online</span>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-800/80 bg-slate-800/30 p-4">
+                    <span className="text-[11px] font-medium text-slate-400">
+                      {t.adminTab.systemHealth}
+                    </span>
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+                      </span>
+                      <span className="text-xs font-bold text-emerald-400">100% Operational</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Members Table Card */}
+              <div className="rounded-3xl border border-slate-800 bg-slate-900/40 p-6 shadow-xl backdrop-blur-md">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 gap-3">
+                  <div className="relative flex-1 max-w-sm">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                    <input
+                      type="text"
+                      value={membersSearchQuery}
+                      onChange={(e) => setMembersSearchQuery(e.target.value)}
+                      placeholder={t.adminTab.searchPlaceholder}
+                      className="w-full rounded-xl border border-slate-700/60 bg-slate-800/60 pl-10 pr-4 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-500 transition"
+                    />
+                  </div>
+
+                  <span className="text-xs text-slate-400">
+                    {lang === "km" ? "បង្ហាញទិន្នន័យជាក់ស្តែងពី Supabase" : "Live data synced from Supabase"}
+                  </span>
+                </div>
+
+                {isLoadingMembers ? (
+                  <div className="py-16 text-center text-slate-400 text-xs">
+                    <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2 text-cyan-400" />
+                    <span>{t.saving}</span>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto mt-2">
+                    <table className="w-full text-left text-xs text-slate-300">
+                      <thead className="bg-slate-800/60 text-slate-400 uppercase text-[10px]">
+                        <tr>
+                          <th className="p-3.5">{t.adminTab.colMember}</th>
+                          <th className="p-3.5">{t.adminTab.colRole}</th>
+                          <th className="p-3.5">{t.adminTab.colPages}</th>
+                          <th className="p-3.5">{t.adminTab.colLastLogin}</th>
+                          <th className="p-3.5">{t.adminTab.colStatus}</th>
+                          <th className="p-3.5 text-right">{t.adminTab.colActions}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/80">
+                        {membersList
+                          .filter((m) => {
+                            if (!membersSearchQuery.trim()) return true;
+                            const query = membersSearchQuery.toLowerCase();
+                            return (
+                              m.name?.toLowerCase().includes(query) ||
+                              m.email?.toLowerCase().includes(query) ||
+                              m.loginType?.toLowerCase().includes(query)
+                            );
+                          })
+                          .map((m, idx) => (
+                            <tr key={m.id || idx} className="hover:bg-slate-800/40 transition">
+                              <td className="p-3.5">
+                                <div className="flex items-center gap-3">
+                                  {m.picture ? (
+                                    <div className="relative h-9 w-9 overflow-hidden rounded-full border border-cyan-500/30">
+                                      <Image
+                                        src={m.picture}
+                                        alt={m.name || "Member"}
+                                        fill
+                                        className="object-cover"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div className="h-9 w-9 rounded-full bg-gradient-to-tr from-cyan-600 to-blue-600 flex items-center justify-center text-white text-xs font-bold shadow-md">
+                                      {m.name ? m.name.charAt(0).toUpperCase() : "M"}
+                                    </div>
+                                  )}
+                                  <div>
+                                    <div className="font-semibold text-white flex items-center gap-2">
+                                      <span>{m.name}</span>
+                                      {m.role?.includes("Owner") && (
+                                        <span className="rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold text-amber-400 border border-amber-500/20">
+                                          OWNER
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="text-[11px] text-slate-400 font-mono">
+                                      {m.email || (m.id ? `ID: ${m.id}` : "Connected User")}
+                                    </span>
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td className="p-3.5">
+                                <span
+                                  className={`rounded-lg px-2.5 py-1 text-[11px] font-medium border ${
+                                    m.loginType?.includes("Facebook")
+                                      ? "bg-blue-500/10 text-blue-300 border-blue-500/20"
+                                      : "bg-cyan-500/10 text-cyan-300 border-cyan-500/20"
+                                  }`}
+                                >
+                                  {m.loginType || "Facebook OAuth"}
+                                </span>
+                              </td>
+
+                              <td className="p-3.5">
+                                <div className="flex flex-col gap-1">
+                                  <span className="font-semibold text-cyan-400">
+                                    {m.pagesCount || (m.pages ? m.pages.length : 1)}{" "}
+                                    {lang === "km" ? "ផេក" : "Pages"}
+                                  </span>
+                                  {m.pages && Array.isArray(m.pages) && (
+                                    <div className="flex flex-wrap gap-1 max-w-xs">
+                                      {m.pages.slice(0, 3).map((p: any, pIdx: number) => (
+                                        <span
+                                          key={pIdx}
+                                          className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-300"
+                                        >
+                                          {typeof p === "string" ? p : p.name}
+                                        </span>
+                                      ))}
+                                      {m.pages.length > 3 && (
+                                        <span className="text-[10px] text-slate-500">
+                                          +{m.pages.length - 3} more
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+
+                              <td className="p-3.5 text-slate-400 text-[11px]">
+                                {m.lastLogin
+                                  ? new Date(m.lastLogin).toLocaleDateString(
+                                      lang === "km" ? "km-KH" : "en-US",
+                                      {
+                                        month: "short",
+                                        day: "numeric",
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      }
+                                    )
+                                  : "Recently"}
+                              </td>
+
+                              <td className="p-3.5">
+                                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-400 border border-emerald-500/20">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                  <span>{m.status || "Active"}</span>
+                                </span>
+                              </td>
+
+                              <td className="p-3.5 text-right">
+                                <button
+                                  onClick={() => setActiveTab("pages")}
+                                  className="text-xs font-medium text-cyan-400 hover:text-cyan-300 hover:underline"
+                                >
+                                  {lang === "km" ? "មើល Pages" : "View Pages"} →
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           )}

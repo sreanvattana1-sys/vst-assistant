@@ -126,8 +126,20 @@ export const translations = {
 
     // Tab 6: Admin
     adminTab: {
-      title: "ការគ្រប់គ្រង Admin & ក្រុមការងារ",
-      subtitle: "កំណត់សិទ្ធិបុគ្គលិកក្នុងការមើលសារ និងការឆ្លើយតបភ្ញៀវ",
+      title: "ផ្ទាំងគ្រប់គ្រង Super Admin (Platform Members & Users)",
+      subtitle: "តាមដាន និងគ្រប់គ្រងរាល់គណនី និង Facebook Pages ទាំងអស់ដែលបានភ្ជាប់មកកាន់ Web App",
+      totalMembers: "សមាជិកប្រើប្រាស់សរុប",
+      totalPages: "Pages បានភ្ជាប់សរុប",
+      systemHealth: "ស្ថានភាពប្រព័ន្ធ",
+      refreshBtn: "ផ្ទុកទិន្នន័យឡើងវិញ",
+      colMember: "ឈ្មោះគណនី / ម្ចាស់",
+      colRole: "ប្រភេទចូល (Method)",
+      colPages: "Pages ដែលគ្រប់គ្រង",
+      colLastLogin: "ចូលប្រើចុងក្រោយ",
+      colStatus: "ស្ថានភាព",
+      colActions: "សកម្មភាព",
+      noMembers: "មិនទាន់មានសមាជិកផ្សេងភ្ជាប់នៅឡើយទេ។",
+      searchPlaceholder: "ស្វែងរកតាមឈ្មោះសមាជិក ឬផេក...",
       addMember: "បន្ថែមសមាជិកថ្មី",
     },
 
@@ -290,8 +302,20 @@ export const translations = {
 
     // Tab 6: Admin
     adminTab: {
-      title: "Admin & Team Management",
-      subtitle: "Configure team access permissions and audit response logs",
+      title: "Super Admin Management (Platform Members & Users)",
+      subtitle: "Monitor and manage all connected accounts and Facebook Pages across the platform",
+      totalMembers: "Total Connected Users",
+      totalPages: "Total Connected Pages",
+      systemHealth: "System Status",
+      refreshBtn: "Refresh Members",
+      colMember: "Member / Account",
+      colRole: "Auth Method",
+      colPages: "Managed Pages",
+      colLastLogin: "Last Active",
+      colStatus: "Status",
+      colActions: "Actions",
+      noMembers: "No other members connected yet.",
+      searchPlaceholder: "Search by member or page name...",
       addMember: "Add New Member",
     },
 
