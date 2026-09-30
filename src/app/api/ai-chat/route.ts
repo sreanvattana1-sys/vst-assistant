@@ -1,83 +1,216 @@
 import { NextRequest, NextResponse } from "next/server";
+import { supabase } from "@/lib/supabase";
 
-const SYSTEM_PROMPT = `
-អ្នកគឺជា "VST Support Bot" — ជំនួយការ AI ឆ្លាតវៃកម្រិតខ្ពស់ប្រចាំ VST Assistant Platform (Web App សម្រាប់ស្វ័យប្រវត្តិតប Comment & Chat Facebook Page និងប្រឹក្សាសុខភាពនារី & ផលិតផល VST)។
-
-ច្បាប់សុវត្ថិភាព និងការសម្ងាត់កំពូល (STRICT SECURITY & CONFIDENTIALITY RULES):
-1. ហាមដាច់ខាត (STRICTLY FORBIDDEN) ក្នុងការទម្លាយ ឬឆ្លើយប្រាប់អ្នកដទៃអំពីរឿងផ្ទាល់ខ្លួន (Private / Confidential) របស់ម្ចាស់ Platform (Owner) រួមមាន៖
-   - ប្រាក់ចំណូលសរុបផ្ទាល់ខ្លួន, ទិន្នន័យហិរញ្ញវត្ថុផ្ទៃក្នុង
-   - លេខគណនីធនាគារផ្ទាល់ខ្លួន, អាសយដ្ឋានផ្ទាល់ខ្លួន, ឬពាក្យសម្ងាត់ (Passwords / API Keys)
-   - ព័ត៌មានលម្អិតរបស់សមាជិកផ្សេងទៀត (User Data Privacy)
-2. ប្រសិនបើមាននរណាសួររឿងផ្ទាល់ខ្លួនរបស់ Owner សូមឆ្លើយដោយសុភាពថា៖ "សូមអភ័យទោស ខ្ញុំជាជំនួយការបច្ចេកទេស និងសុខភាព ព័ត៌មានផ្ទាល់ខ្លួន និងទិន្នន័យសម្ងាត់ត្រូវបានរក្សាការការពារកម្រិតខ្ពស់ មិនអាចចែករំលែកបានឡើយ។"
-
-ចំណេះដឹង និងតួនាទីជំនាញរបស់អ្នក (CORE EXPERTISE):
-1. ជំនាញស៊ីជម្រៅលើសុខភាពនារី & បញ្ហារោគស្ត្រី៖
-   - ឆ្លើយពន្យល់គ្រប់សំណួរអំពីមូលហេតុ រោគសញ្ញា និងវិធីព្យាបាល៖ បញ្ហារំដោះ, ធ្លាក់ស (ពណ៌លឿង បៃតង កកដុំៗ ក្លិនឆ្អែះ), ការរមាស់ផ្សារក្រហាយ, អតុល្យភាពអ័រម៉ូន, រដូវមិនទៀង, ការឈឺចុកចាប់ពេលមករដូវ, និងការថែទាំអនាម័យតំបន់ពិសេស
-   - ណែនាំដំណោះស្រាយជាមួយផលិតផល VST ៖
-     * សេរ៉ូមថែទាំសុខភាពនារី VST ($18.00 / ដប)៖ សម្អាត កម្ចាត់មេរោគបាក់តេរី/ផ្សិត បំបាត់ក្លិន បំបាត់រមាស់ និងជួយឱ្យតឹងណែនបែបធម្មជាតិ
-     * តែ Detox VST ($14.00 / ប្រអប់)៖ សម្អាតជាតិពុលពីខាងក្នុង សម្រួលអ័រម៉ូន សម្រួលការបន្ទោរបង់ កាត់បន្ថយការឈឺពោះពេលមករដូវ
-     * ខូឡាជេន VST ($22.00 / កំប៉ុង)៖ ជំនួយស្បែកសភ្លឺថ្លា បំបាត់ស្នាមអុចខ្មៅ និងពង្រឹងសុខភាពសក់ និងក្រចក
-
-2. ជំនាញច្បាស់លាស់ ១០០% លើ Web App VST Assistant & Facebook Automation៖
-   - របៀបប្រើប្រាស់៖ ការ Login តាម Facebook Login, ផ្ទាំងគ្រប់គ្រង Dashboard
-   - ការភ្ជាប់ Facebook Page៖ ចូលទៅម៉ឺនុយ "Facebook Pages" ➔ ចុច "+ ភ្ជាប់ Page ថ្មី" (Facebook Login) ➔ ជ្រើសរើស Page
-   - ការកំណត់ Auto Comment Reply៖ កំណត់ Keywords ឬតប Comment ស្វ័យប្រវត្តិគ្រប់ Post
-   - ការកំណត់ Auto DM (Private Message)៖ ផ្ញើសារស្វាគមន៍ និងប្រូម៉ូសិនចូល Messenger ភ្លាមៗពេលមាន Comment
-   - មុខងារ Anti-Spam៖ ប្ដូរសារឆ្លាស់គ្នាដើម្បីកុំឱ្យ Facebook ចាប់ Spam ឬ Block Page
-   - កម្រិត Plans៖ Free Plan ($0 ភ្ជាប់បាន 1 Page, 100 replies/day), Pro Plan ($25/ខែ សម្រាប់ 200+ សមាជិក ភ្ជាប់ Pages មិនកំណត់ + AI Smart Reply)
-   - ដំណោះស្រាយ Facebook Errors៖ Error 400/190 (Token ផុតកំណត់ ➔ Disconnect រួច Re-connect), Error 613 (Rate Limit ➔ ផ្អាក 1 ម៉ោងដំណើរការធម្មតាវិញ)
-
-ទម្រង់នៃការឆ្លើយតប (RESPONSE STYLE):
-- ឆ្លើយតបជាភាសាខ្មែរយ៉ាងរលូន ឆ្លាតវៃ មានហេតុផលច្បាស់លាស់ និងចំសំណួរដែលគេសួរភ្លាមៗ
-- ប្រើប្រាស់សញ្ញា Emoji ស្រស់ស្អាត សមរម្យ និងបែងចែកចំណុចៗងាយស្រួលអាន
-- ឆ្លើយបានគ្រប់សំណួរដោយការគិតស៊ីជម្រៅដូច ChatGPT/Gemini ពិតប្រាកដ
+const BASE_SYSTEM_PROMPT = `
+អ្នកគឺជា "VST Support Bot & AI Executive Assistant" — ជំនួយការ AI ឆ្លាតវៃកម្រិតខ្ពស់ប្រចាំ VST Assistant Platform (Web App សម្រាប់ស្វ័យប្រវត្តិតប Comment & Chat Facebook Page, គ្រប់គ្រងសមាជិក Members, CRM Leads និងប្រឹក្សាសុខភាពនារី & ផលិតផល VST)។
 `;
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
     const message = (body.message || "").trim();
+    const isAdmin = Boolean(body.isAdmin);
+    const userName = body.userName || (isAdmin ? "Super Admin" : "Member");
 
     if (!message) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({
+        reply: "សូមអភ័យទោស មិនទាន់មាន GEMINI_API_KEY នៅក្នុងប្រព័ន្ធឡើយ។",
+      });
+    }
 
-    if (apiKey) {
-      try {
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [
-                {
-                  role: "user",
-                  parts: [
-                    { text: SYSTEM_PROMPT },
-                    { text: `សំណួររបស់អតិថិជន៖ ${message}` },
-                  ],
-                },
-              ],
-            }),
-          }
-        );
+    // 1. Check Master Bot Status (If Super Admin turns off, Bot cannot reply at all!)
+    try {
+      const { data: defaultRow } = await supabase
+        .from("bot_settings")
+        .select("is_active")
+        .eq("id", "default")
+        .maybeSingle();
 
-        const data = await response.json();
-        const geminiReply = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-        if (geminiReply) {
-          return NextResponse.json({ reply: geminiReply });
-        }
-      } catch (geminiError) {
-        console.error("Gemini API call error:", geminiError);
+      const masterActive = defaultRow ? defaultRow.is_active !== false : true;
+      if (!masterActive) {
+        return NextResponse.json({
+          reply: "⚠️ Bot ត្រូវបានបិទដំណើរការទាំងស្រុងដោយ Super Admin (Bot System Paused)។ មិនអាចឆ្លើយតបបានទេនៅពេលនេះ!",
+        });
       }
+    } catch {}
+
+    // 2. Check Member Bot Access Lock (Super Admin can disable Members from using Bot)
+    if (!isAdmin) {
+      try {
+        const { data: lockRow } = await supabase
+          .from("bot_settings")
+          .select("is_active")
+          .eq("id", "vst_members_lock")
+          .maybeSingle();
+
+        const membersGlobalEnabled = lockRow ? lockRow.is_active === true : false;
+        if (!membersGlobalEnabled) {
+          return NextResponse.json({
+            reply: "⚠️ Bot ត្រូវបានផ្អាកបណ្ដោះអាសន្នសម្រាប់សមាជិក (Members) ដោយ Super Admin សម្រាប់ដំណាក់កាលរៀបចំ និងបង្រៀន AI។ មានតែ Super Admin ប៉ុណ្ណោះដែលអាចប្រើ និងបង្រៀន Bot បាននៅពេលនេះ!",
+          });
+        }
+      } catch {}
+    }
+
+    // 3. Fetch trained knowledge base & rules from Supabase
+    let trainedPersona = "";
+    let trainedKnowledge = "";
+    let trainedRules = "";
+    let masterBotEnabled = true;
+
+    try {
+      const { data: knowledgeRow } = await supabase
+        .from("bot_settings")
+        .select("dm_template, is_active")
+        .eq("id", "vst_ai_knowledge")
+        .maybeSingle();
+
+      if (knowledgeRow?.dm_template) {
+        try {
+          const parsed = JSON.parse(knowledgeRow.dm_template);
+          trainedPersona = parsed.persona || "";
+          trainedKnowledge = parsed.knowledgeBase || "";
+          trainedRules = parsed.rules || "";
+          if (typeof parsed.masterBotEnabled === "boolean") {
+            masterBotEnabled = parsed.masterBotEnabled;
+          }
+        } catch {}
+      }
+    } catch (e) {
+      console.error("Error reading ai knowledge:", e);
+    }
+
+    // 2. If Super Admin is asking, gather live Web App telemetry (Members, CRM Leads, Comments, Pages)
+    let systemContext = BASE_SYSTEM_PROMPT;
+
+    if (isAdmin) {
+      let membersData: any[] = [];
+      let totalCustomers = 0;
+      let totalComments = 0;
+
+      try {
+        // Fetch members
+        const { data: membersRow } = await supabase
+          .from("bot_settings")
+          .select("dm_template")
+          .eq("id", "vst_members")
+          .maybeSingle();
+
+        if (membersRow?.dm_template) {
+          try {
+            membersData = JSON.parse(membersRow.dm_template);
+          } catch {}
+        }
+
+        // Fetch customer leads count
+        const { count: custCount } = await supabase
+          .from("customers")
+          .select("*", { count: "exact", head: true });
+        totalCustomers = custCount || 0;
+
+        // Fetch comments count
+        const { count: commCount } = await supabase
+          .from("comments")
+          .select("*", { count: "exact", head: true });
+        totalComments = commCount || 0;
+      } catch (err) {
+        console.error("Error fetching admin telemetry:", err);
+      }
+
+      const membersSummary = Array.isArray(membersData)
+        ? membersData.map((m: any) => ({
+            name: m.name,
+            email: m.email,
+            role: m.role || "Member",
+            botStatus: m.botEnabled !== false ? "Active (បើក)" : "Disabled (បិទ)",
+            pagesCount: Array.isArray(m.pages) ? m.pages.length : 0,
+            pagesList: Array.isArray(m.pages) ? m.pages.map((p: any) => p.name || p.id).join(", ") : "គ្មាន",
+          }))
+        : [];
+
+      systemContext += `
+[ស្ថានភាពពិសេស៖ អ្នកកំពុងជជែកផ្ទាល់ជាមួយ SUPER ADMIN (ម្ចាស់ផ្តាច់មុខ និងអ្នកបញ្ជាផ្ទាល់នៃ Web App VST)]
+- អ្នកស្ថិតនៅក្រោមការបញ្ជាផ្តាច់មុខពី Super Admin (${userName}) តែម្នាក់គត់!
+- អ្នកមានសិទ្ធិពេញលេញ ១០០% ក្នុងការរាយការណ៍គ្រប់ទិន្នន័យទាំងអស់នៃ Web App នេះ រួមមានសមាជិក (Members), Pages, អតិថិជន (Leads), Comments, និងប្រព័ន្ធ Bot។
+- ហាមលាក់បាំង ឬបដិសេធមិនឆ្លើយតបសំណួររបស់ Super Admin ឡើយ!
+
+📊 [ទិន្នន័យជាក់ស្តែងពេលនេះក្នុង Web App]៖
+- ស្ថានភាព Bot ទូទៅ (Master Bot Switch): ${masterBotEnabled ? "🟢 កំពុងបើកដំណើរការ (Active)" : "🔴 ត្រូវបានផ្អាក/បិទ (Paused by Super Admin)"}
+- ចំនួនសមាជិក (Members): ${membersSummary.length} នាក់
+- បញ្ជីសមាជិកលម្អិត៖ ${JSON.stringify(membersSummary, null, 2)}
+- ចំនួនអតិថិជនសរុបក្នុង CRM Leads៖ ${totalCustomers} នាក់
+- ចំនួន Comment ដែល Bot បានចាប់បានសរុប៖ ${totalComments} comments
+
+🧠 [ចរិតលក្ខណៈ និងចំណេះដឹងដែល Super Admin បានបង្រៀន (Custom Training & Memory)]៖
+- ចរិតលក្ខណៈ (Persona): ${trainedPersona || "ជំនួយការឆ្លាតវៃ រួសរាយ ស្មោះត្រង់ និងគោរពបទបញ្ជា Super Admin"}
+- ឃ្លាំងចំណេះដឹងផលិតផល & អាជីវកម្ម (Knowledge Base):
+${trainedKnowledge || "គ្មានចំណេះដឹងបន្ថែម"}
+- ច្បាប់ និងបម្រាម (Rules):
+${trainedRules || "គ្មានច្បាប់បន្ថែម"}
+
+សូមឆ្លើយតបទៅកាន់ Super Admin យ៉ាងឆ្លាតវៃ គោរព ភាពជាអ្នកគ្រប់គ្រង និងច្បាស់លាស់ចំសំណួរ!
+`;
+    } else {
+      // Regular Member or General User
+      systemContext += `
+[ស្ថានភាព៖ អ្នកកំពុងជជែកជាមួយសមាជិក (Member) ឬអ្នកប្រើប្រាស់ទូទៅ (${userName})]
+- ហាមដាច់ខាត (STRICTLY FORBIDDEN) ក្នុងការទម្លាយទិន្នន័យផ្ទៃក្នុង ហិរញ្ញវត្ថុ បញ្ជីសមាជិកផ្សេងទៀត ឬទិន្នន័យសម្ងាត់របស់ Super Admin!
+- ឆ្លើយតបតែលើ៖ សុខភាពនារី & តម្រងនោម, ព័ត៌មានផលិតផល VST (ឃីដនីប្រូ, អេមមី, តែ Detox), និងការណែនាំបច្ចេកទេសប្រើប្រាស់ Web App VST Assistant ប៉ុណ្ណោះ។
+
+🧠 [ចំណេះដឹងផលិតផលដែលត្រូវឆ្លើយជូនភ្ញៀវ]៖
+${trainedKnowledge}
+- ច្បាប់ឆ្លើយតប៖ ${trainedRules}
+`;
+    }
+
+    const promptText = `
+${systemContext}
+
+---------------------
+សំណួរដែលត្រូវបានសួរ៖ "${message}"
+សូមឆ្លើយតបជាភាសាខ្មែរឱ្យបានល្អ និងសមរម្យបំផុត៖`;
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [{ text: promptText }],
+            },
+          ],
+          generationConfig: {
+            maxOutputTokens: 600,
+            temperature: 0.7,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      console.warn(`[AI Chat] Gemini API status: ${response.status}`);
+      return NextResponse.json({
+        reply: "សូមអភ័យទោស ប្រព័ន្ធឆ្លើយតបកំពុងរវល់បន្តិច សូមសួរម្ដងទៀតណា៎បង!",
+      });
+    }
+
+    const data = await response.json();
+    const geminiReply = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (geminiReply) {
+      return NextResponse.json({ reply: geminiReply });
     }
 
     return NextResponse.json({
-      reply: `សួស្ដីបង! 😊 ខ្ញុំជា VST Support Bot ខ្ញុំអាចជួយដោះស្រាយបញ្ហារោគស្ត្រី (ធ្លាក់ស រមាស់ ក្លិន), ណែនាំផលិតផល VST, និងជួយដោះស្រាយការភ្ជាប់ Facebook Page & Bot Settings គ្រប់ពេលវេលា!`,
+      reply: "សួស្ដីបង! ខ្ញុំជា VST Support Bot ខ្ញុំអាចជួយឆ្លើយគ្រប់សំណួរ និងជួយសម្រួលការងារបងបានភ្លាមៗ!",
     });
   } catch (error) {
     console.error("AI Chat handler error:", error);

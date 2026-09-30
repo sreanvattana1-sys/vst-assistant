@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { replyToComment, sendPrivateReply } from "@/lib/facebook";
 import { supabase } from "@/lib/supabase";
+import { generateSmartCommentReply } from "@/lib/gemini";
 import { readFile } from "fs/promises";
 import path from "path";
 import os from "os";
@@ -25,6 +26,7 @@ interface PageConfig {
   autoDm: boolean;
   dmTemplate: string;
   keywords?: string;
+  aiReplyEnabled?: boolean;
 }
 
 async function getPageConfig(pageId: string): Promise<PageConfig> {
@@ -40,7 +42,7 @@ async function getPageConfig(pageId: string): Promise<PageConfig> {
     const { data: rows } = await supabase
       .from("bot_settings")
       .select("*")
-      .in("id", [pageId, "default", "vst_members", "vst_keywords"]);
+      .in("id", [pageId, "default", "vst_members", "vst_keywords", "vst_ai_settings", "vst_ai_knowledge", "vst_members_lock"]);
 
     if (Array.isArray(rows)) {
       const defaultRow = rows.find((r) => r.id === "default");
@@ -56,6 +58,16 @@ async function getPageConfig(pageId: string): Promise<PageConfig> {
           dmTemplate = defaultRow.dm_template;
         }
       }
+
+      // Check Master Bot Switch from Super Admin AI Knowledge
+      const knowledgeRow = rows.find((r) => r.id === "vst_ai_knowledge");
+      if (knowledgeRow && knowledgeRow.is_active === false) {
+        masterActive = false;
+      }
+
+      // Check Global Member Lock from vst_members_lock
+      const lockRow = rows.find((r) => r.id === "vst_members_lock");
+      const membersGlobalEnabled = lockRow ? lockRow.is_active === true : false;
 
       const pageRow = rows.find((r) => r.id === pageId);
       if (pageRow) {
@@ -82,8 +94,8 @@ async function getPageConfig(pageId: string): Promise<PageConfig> {
                 if (matched) {
                   if (matched.accessToken) token = matched.accessToken;
                   if (matched.name) pageName = matched.name;
-                  if (m.botEnabled === false || m.status === "Disabled") {
-                    console.log(`[Webhook] Member ${m.name} bot is disabled by Admin. Muting page ${pageId}`);
+                  if (!membersGlobalEnabled || m.botEnabled === false || m.status === "Disabled") {
+                    console.log(`[Webhook] Member ${m.name} bot is disabled by Admin (Global Lock: ${!membersGlobalEnabled}). Muting page ${pageId}`);
                     isPageActive = false;
                   }
                   break;
@@ -103,6 +115,19 @@ async function getPageConfig(pageId: string): Promise<PageConfig> {
         } catch {}
       }
 
+      let aiReplyEnabled = false;
+      const aiRow = rows.find((r) => r.id === "vst_ai_settings");
+      if (aiRow?.dm_template) {
+        try {
+          const map = JSON.parse(aiRow.dm_template);
+          if (typeof map[pageId] === "boolean") {
+            aiReplyEnabled = map[pageId];
+          } else if (typeof map["default"] === "boolean") {
+            aiReplyEnabled = map["default"];
+          }
+        } catch {}
+      }
+
       return {
         isActive: masterActive && isPageActive,
         token,
@@ -111,6 +136,7 @@ async function getPageConfig(pageId: string): Promise<PageConfig> {
         autoDm,
         dmTemplate,
         keywords,
+        aiReplyEnabled,
       };
     }
   } catch (e) {
@@ -130,6 +156,7 @@ async function getPageConfig(pageId: string): Promise<PageConfig> {
     autoDm,
     dmTemplate,
     keywords: "",
+    aiReplyEnabled: false,
   };
 }
 
@@ -280,7 +307,29 @@ export async function POST(req: NextRequest) {
                 console.log(`[New Comment on ${pageConfig.pageName}] From: ${senderName || "Unknown"} (${senderId}), Comment: "${userComment}"`);
 
                 // A. Auto Reply on Comment using page-specific token
-                const commentText = getCommentReply(pageId, pageConfig.pageName, senderName, pageConfig.templates, senderId);
+                let commentText = "";
+                if (pageConfig.aiReplyEnabled) {
+                  try {
+                    const aiReply = await generateSmartCommentReply({
+                      pageName: pageConfig.pageName,
+                      pageId: pageId,
+                      senderName: senderName,
+                      senderId: senderId,
+                      userComment: userComment,
+                    });
+                    if (aiReply) {
+                      commentText = aiReply;
+                      console.log(`[Webhook] Gemini AI generated smart reply for comment ${commentId}: "${commentText}"`);
+                    }
+                  } catch (aiErr) {
+                    console.error("[Webhook] Gemini AI error, falling back to static template:", aiErr);
+                  }
+                }
+
+                if (!commentText) {
+                  commentText = getCommentReply(pageId, pageConfig.pageName, senderName, pageConfig.templates, senderId);
+                }
+
                 const replyRes = await replyToComment({
                   pageAccessToken: pageConfig.token,
                   commentId: commentId,

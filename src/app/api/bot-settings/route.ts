@@ -25,7 +25,26 @@ export async function GET(req: NextRequest) {
       console.error("Error loading keywords map:", e);
     }
 
-    // 2. Fetch page settings
+    // 2. Fetch AI reply enabled setting from vst_ai_settings
+    let aiReplyEnabled = false;
+    try {
+      const { data: aiData } = await supabase
+        .from("bot_settings")
+        .select("dm_template")
+        .eq("id", "vst_ai_settings")
+        .maybeSingle();
+
+      if (aiData?.dm_template) {
+        const aiMap = JSON.parse(aiData.dm_template);
+        if (typeof aiMap[pageId] === "boolean") {
+          aiReplyEnabled = aiMap[pageId];
+        }
+      }
+    } catch (e) {
+      console.error("Error loading ai settings map:", e);
+    }
+
+    // 3. Fetch page settings
     const { data } = await supabase
       .from("bot_settings")
       .select("*")
@@ -36,6 +55,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({
         ...data,
         keywords: pageKeywords,
+        ai_reply_enabled: aiReplyEnabled,
       });
     }
 
@@ -64,6 +84,7 @@ export async function GET(req: NextRequest) {
       auto_dm_enabled: defaultData ? defaultData.auto_dm_enabled !== false : true,
       dm_template: fallbackDm,
       keywords: pageKeywords,
+      ai_reply_enabled: aiReplyEnabled,
     });
   } catch (error) {
     console.error("Error fetching bot settings:", error);
@@ -81,6 +102,7 @@ export async function POST(req: NextRequest) {
       auto_dm_enabled,
       dm_template,
       keywords,
+      ai_reply_enabled,
     } = body;
 
     // 1. Save keywords into vst_keywords map
@@ -112,7 +134,36 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. Save page settings
+    // 2. Save AI reply toggle into vst_ai_settings map
+    if (typeof ai_reply_enabled === "boolean") {
+      try {
+        const { data: aiData } = await supabase
+          .from("bot_settings")
+          .select("dm_template")
+          .eq("id", "vst_ai_settings")
+          .maybeSingle();
+
+        let aiMap: Record<string, boolean> = {};
+        if (aiData?.dm_template) {
+          try {
+            aiMap = JSON.parse(aiData.dm_template);
+          } catch {}
+        }
+
+        aiMap[pageId] = ai_reply_enabled;
+
+        await supabase.from("bot_settings").upsert({
+          id: "vst_ai_settings",
+          is_active: true,
+          dm_template: JSON.stringify(aiMap),
+          updated_at: new Date().toISOString(),
+        });
+      } catch (aiErr) {
+        console.error("Error saving ai setting to vst_ai_settings:", aiErr);
+      }
+    }
+
+    // 3. Save page settings
     const { data, error } = await supabase
       .from("bot_settings")
       .upsert({
@@ -135,6 +186,7 @@ export async function POST(req: NextRequest) {
       settings: {
         ...data,
         keywords: typeof keywords === "string" ? keywords.trim() : "",
+        ai_reply_enabled: typeof ai_reply_enabled === "boolean" ? ai_reply_enabled : false,
       },
     });
   } catch (error) {

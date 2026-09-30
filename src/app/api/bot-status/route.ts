@@ -52,39 +52,64 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const memberId = searchParams.get("memberId");
   const memberName = searchParams.get("memberName");
+  const isAdmin = searchParams.get("isAdmin") === "true";
+
+  // Check Global Members Bot Access Lock (Controlled by Super Admin)
+  let membersGlobalEnabled = false; // Default: locked during learning phase
+  try {
+    const { data: lockRow } = await supabase
+      .from("bot_settings")
+      .select("is_active")
+      .eq("id", "vst_members_lock")
+      .maybeSingle();
+
+    if (lockRow) {
+      membersGlobalEnabled = lockRow.is_active === true;
+    }
+  } catch (e) {
+    console.error("Error reading vst_members_lock:", e);
+  }
 
   let isLockedByAdmin = false;
   let memberBotEnabled = true;
 
-  if (memberId || memberName) {
-    try {
-      const { data } = await supabase
-        .from("bot_settings")
-        .select("dm_template")
-        .eq("id", "vst_members")
-        .maybeSingle();
+  if (!isAdmin) {
+    // If Super Admin has disabled Members Bot Access globally:
+    if (!membersGlobalEnabled) {
+      isLockedByAdmin = true;
+      memberBotEnabled = false;
+    } else if (memberId || memberName) {
+      // Check individual member status
+      try {
+        const { data } = await supabase
+          .from("bot_settings")
+          .select("dm_template")
+          .eq("id", "vst_members")
+          .maybeSingle();
 
-      if (data?.dm_template) {
-        const members = JSON.parse(data.dm_template);
-        if (Array.isArray(members)) {
-          const m = members.find((x: any) =>
-            (memberId && (x.id === memberId || String(x.id) === String(memberId))) ||
-            (memberName && x.name?.toLowerCase() === memberName.toLowerCase()) ||
-            (memberName && x.name?.toLowerCase().includes("sam") && memberName.toLowerCase().includes("sam"))
-          );
-          if (m) {
-            memberBotEnabled = m.botEnabled !== false && m.status !== "Disabled";
-            isLockedByAdmin = !memberBotEnabled;
+        if (data?.dm_template) {
+          const members = JSON.parse(data.dm_template);
+          if (Array.isArray(members)) {
+            const m = members.find((x: any) =>
+              (memberId && (x.id === memberId || String(x.id) === String(memberId))) ||
+              (memberName && x.name?.toLowerCase() === memberName.toLowerCase()) ||
+              (memberName && x.name?.toLowerCase().includes("sam") && memberName.toLowerCase().includes("sam"))
+            );
+            if (m) {
+              memberBotEnabled = m.botEnabled !== false && m.status !== "Disabled";
+              isLockedByAdmin = !memberBotEnabled;
+            }
           }
         }
+      } catch (e) {
+        console.error("Error reading member bot status:", e);
       }
-    } catch (e) {
-      console.error("Error reading member bot status:", e);
     }
   }
 
   return NextResponse.json({
     active: masterActive,
+    membersGlobalEnabled,
     isLockedByAdmin,
     memberBotEnabled,
   });
@@ -94,54 +119,42 @@ export async function POST(req: NextRequest) {
   try {
     const text = await req.text();
     const body = JSON.parse(text);
-    const { active, isAdmin, memberId, memberName } = body;
+    const { active, membersBotEnabled, isAdmin, memberId, memberName } = body;
 
-    // If Member tries to toggle bot status:
+    // Non-admin users cannot change global bot settings
     if (!isAdmin) {
-      // Check if Member is locked by Admin
-      const { data } = await supabase
-        .from("bot_settings")
-        .select("dm_template")
-        .eq("id", "vst_members")
-        .maybeSingle();
-
-      if (data?.dm_template) {
-        try {
-          const members = JSON.parse(data.dm_template);
-          if (Array.isArray(members)) {
-            const m = members.find((x: any) =>
-              (memberId && (x.id === memberId || String(x.id) === String(memberId))) ||
-              (memberName && x.name?.toLowerCase() === memberName.toLowerCase()) ||
-              (memberName && x.name?.toLowerCase().includes("sam") && memberName.toLowerCase().includes("sam"))
-            );
-            if (m && (m.botEnabled === false || m.status === "Disabled")) {
-              return NextResponse.json(
-                {
-                  success: false,
-                  error: "គណនីរបស់អ្នកត្រូវបានផ្អាក Bot ដោយ Super Admin។ មិនអាចបើកដោយខ្លួនឯងបានទេ!",
-                  locked: true,
-                },
-                { status: 403 }
-              );
-            }
-          }
-        } catch {}
-      }
-
       return NextResponse.json(
         {
           success: false,
-          error: "មានតែ Super Admin ប៉ុណ្ណោះដែលអាចបញ្ជា Bot Status សកលបាន!",
+          error: "មានតែ Super Admin ប៉ុណ្ណោះដែលអាចបញ្ជា Bot Status បាន!",
           locked: true,
         },
         { status: 403 }
       );
     }
 
-    const isAct = active !== false;
-    await writeBotStatus(isAct);
-    return NextResponse.json({ success: true, active: isAct });
-  } catch {
+    // 1. If Super Admin toggles Master Bot Status
+    if (typeof active === "boolean") {
+      await writeBotStatus(active);
+    }
+
+    // 2. If Super Admin toggles Members Global Bot Access
+    if (typeof membersBotEnabled === "boolean") {
+      await supabase.from("bot_settings").upsert({
+        id: "vst_members_lock",
+        is_active: membersBotEnabled,
+        updated_at: new Date().toISOString(),
+      });
+    }
+
+    const currentMaster = typeof active === "boolean" ? active : await readBotStatus();
+
+    return NextResponse.json({
+      success: true,
+      active: currentMaster,
+      membersGlobalEnabled: typeof membersBotEnabled === "boolean" ? membersBotEnabled : undefined,
+    });
+  } catch (err) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 }
