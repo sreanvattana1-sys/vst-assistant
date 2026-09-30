@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import {
   LayoutDashboard,
@@ -470,14 +470,53 @@ export default function VSTAssistantApp() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatCategory, setChatCategory] = useState<"all" | "fb" | "bot" | "health" | "plan">("all");
   const [chatInput, setChatInput] = useState("");
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
+  const adminChatBottomRef = useRef<HTMLDivElement>(null);
   const [chatMessages, setChatMessages] = useState<
     { from: "user" | "bot"; text: string; category?: string }[]
   >([
     {
       from: "bot",
-      text: "សួស្ដី! 👋 ខ្ញុំជា VST Support Bot。\nខ្ញុំជួយឆ្លើយសំណួរដោយបែងចែកតាមប្រធានបទងាយស្រួលរក៖\n\n📘 ជំនួយ Facebook Page & Permissions\n⚙️ ការកំណត់ Bot Auto-Reply & Keywords\n🌿 ផលិតផល & ចំណេះដឹងសុខភាពនារី\n👥 គណនីសមាជិក & Plan\n\nជ្រើសរើសប្រធានបទខាងលើ ឬវាយសំណួររបស់អ្នកបានភ្លាមៗ!",
+      text: "សួស្ដីបង! 👋 ខ្ញុំជា VST Support Bot & AI Executive Assistant។\nខ្ញុំបានត្រៀមខ្លួនរួចរាល់ដើម្បីជួយសម្រួលការងារ គ្រប់គ្រងប្រព័ន្ធ និងឆ្លើយរាល់សំណួររបស់បង!",
     },
   ]);
+
+  // Auto-scroll chat to bottom
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    adminChatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages, isChatLoading]);
+
+  // Load chat history from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedHistory = localStorage.getItem("vst_chat_history");
+      if (savedHistory) {
+        const parsed = JSON.parse(savedHistory);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setChatMessages(parsed);
+        }
+      }
+    } catch (e) {
+      console.error("Error loading chat history:", e);
+    }
+  }, []);
+
+  const handleClearChatHistory = () => {
+    if (confirm("តើបងពិតជាចង់សម្អាតប្រវត្តិសន្ទនា (Clear Chat History) ទាំងអស់មែនទេ?")) {
+      const initial = [
+        {
+          from: "bot" as const,
+          text: "សួស្ដីបង! 👋 ខ្ញុំជា VST Support Bot & AI Executive Assistant។ ប្រវត្តិសន្ទនាត្រូវបានសម្អាតរួចរាល់ តើបងមានកិច្ចការអ្វីឱ្យខ្ញុំជួយបន្តទៀតដែរទេ?",
+        },
+      ];
+      setChatMessages(initial);
+      try {
+        localStorage.removeItem("vst_chat_history");
+      } catch {}
+    }
+  };
 
   // Super Admin AI Training & Knowledge Base state
   const [isTrainingOpen, setIsTrainingOpen] = useState(false);
@@ -797,11 +836,18 @@ export default function VSTAssistantApp() {
 
   const handleSendChat = async (customText?: string) => {
     const textToSend = (customText || chatInput).trim();
-    if (!textToSend) return;
-    setChatMessages((prev) => [...prev, { from: "user", text: textToSend }]);
-    if (!customText) setChatInput("");
+    if (!textToSend || isChatLoading) return;
 
-    // Show temporary typing indicator or loading
+    const userMsg = { from: "user" as const, text: textToSend };
+    const newMessages = [...chatMessages, userMsg];
+    setChatMessages(newMessages);
+    try {
+      localStorage.setItem("vst_chat_history", JSON.stringify(newMessages.slice(-50)));
+    } catch {}
+
+    if (!customText) setChatInput("");
+    setIsChatLoading(true);
+
     try {
       const res = await fetch("/api/ai-chat", {
         method: "POST",
@@ -810,19 +856,29 @@ export default function VSTAssistantApp() {
           message: textToSend,
           isAdmin: isAdmin,
           userName: currentUser.name || "VST Super Admin",
+          history: newMessages.slice(-10),
         }),
       });
       const data = await res.json();
       const botReply = data.reply || "សូមអភ័យទោស ប្រព័ន្ធកំពុងដំណើរការ សូមសួរម្ដងទៀត!";
-      setChatMessages((prev) => [...prev, { from: "bot", text: botReply }]);
+      const botMsg = { from: "bot" as const, text: botReply };
+      const updatedWithBot = [...newMessages, botMsg];
+      setChatMessages(updatedWithBot);
+      try {
+        localStorage.setItem("vst_chat_history", JSON.stringify(updatedWithBot.slice(-50)));
+      } catch {}
     } catch {
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          from: "bot",
-          text: "🌸 【រោគសញ្ញាទូទៅនៃបញ្ហារោគស្ត្រី & វិធីដោះស្រាយ】៖\n\n១. ធ្លាក់សខុសប្រក្រតី (ពណ៌លឿង/បៃតង/កករ និងមានក្លិនមិនល្អ)\n២. រមាស់ រលាកក្រហាយនៅតំបន់ពិសេស\n៣. រដូវមកមិនទៀង ឬឈឺចុកចាប់ខ្លាំងពេលមករដូវ\n\n💡 ដំណោះស្រាយ៖ ប្រើប្រាស់ 'សេរ៉ូមថែទាំសុខភាពនារី VST ($18)' និង 'តែ Detox VST ($14)' ដើម្បីសម្អាតបាក់តេរី បំបាត់រមាស់ និងសម្រួលអ័រម៉ូនពីខាងក្នុង!",
-        },
-      ]);
+      const fallbackMsg = {
+        from: "bot" as const,
+        text: "🌸 【រោគសញ្ញាទូទៅនៃបញ្ហារោគស្ត្រី & វិធីដោះស្រាយ】៖\n\n១. ធ្លាក់សខុសប្រក្រតី (ពណ៌លឿង/បៃតង/កករ និងមានក្លិនមិនល្អ)\n២. រមាស់ រលាកក្រហាយនៅតំបន់ពិសេស\n៣. រដូវមកមិនទៀង ឬឈឺចុកចាប់ខ្លាំងពេលមករដូវ\n\n💡 ដំណោះស្រាយ៖ ប្រើប្រាស់ 'សេរ៉ូមថែទាំសុខភាពនារី VST ($18)' និង 'តែ Detox VST ($14)' ដើម្បីសម្អាតបាក់តេរី បំបាត់រមាស់ និងសម្រួលអ័រម៉ូនពីខាងក្នុង!",
+      };
+      const updatedWithFallback = [...newMessages, fallbackMsg];
+      setChatMessages(updatedWithFallback);
+      try {
+        localStorage.setItem("vst_chat_history", JSON.stringify(updatedWithFallback.slice(-50)));
+      } catch {}
+    } finally {
+      setIsChatLoading(false);
     }
   };
 
@@ -2281,6 +2337,210 @@ export default function VSTAssistantApp() {
                 </div>
               </div>
 
+              {/* VST SUPPORT CHAT & AI EXECUTIVE TRAINING CONSOLE (FULL-SIZE EMBEDDED) */}
+              <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900/90 via-[#061224] to-[#030915] p-6 shadow-2xl backdrop-blur-xl">
+                {/* Console Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-800/80">
+                  <div className="flex items-center gap-3.5">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 text-white shadow-lg shadow-cyan-500/20">
+                      <Bot className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-lg font-bold text-white tracking-tight">
+                          💬 មជ្ឈមណ្ឌល VST Support Chat & AI Training Console
+                        </h3>
+                        <span className="rounded-full bg-cyan-500/10 px-2.5 py-0.5 text-[10px] font-bold text-cyan-400 border border-cyan-500/30">
+                          {isAdmin ? "Super Admin Full Access" : "Support Chat"}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        ផ្ទាំងជជែកធំទូលាយសម្រាប់សួរបញ្ជា Bot រក្សាប្រវត្តិសន្ទនាជាប់ជានិច្ច និងបង្រៀន AI ចងចាំច្បាប់ & ព័ត៌មានជាក់ស្តែង
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={handleClearChatHistory}
+                      className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/80 px-3.5 py-2 text-xs font-medium text-slate-300 hover:bg-rose-500/20 hover:text-rose-300 hover:border-rose-500/30 transition shadow-sm"
+                      title="សម្អាតប្រវត្តិសន្ទនាទាំងអស់"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>សម្អាតប្រវត្តិ</span>
+                    </button>
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800/60 border border-slate-700/60 text-xs">
+                      <span className={`h-2.5 w-2.5 rounded-full ${masterBotEnabled ? "bg-emerald-400 animate-pulse" : "bg-rose-400"}`} />
+                      <span className="text-slate-300 font-medium">
+                        {masterBotEnabled ? "Bot Online" : "Bot Paused"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2-Column Grid: Left (Chat Stream) + Right (AI Training & Memory) */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-5">
+                  {/* Left Column: Chat Conversation Stream */}
+                  <div className={`${isAdmin ? "lg:col-span-7" : "lg:col-span-12"} flex flex-col h-[540px] rounded-2xl border border-slate-800/80 bg-slate-950/70 overflow-hidden`}>
+                    {/* Chat Messages Area */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
+                      {chatMessages.map((msg, i) => (
+                        <div
+                          key={i}
+                          className={`flex items-start gap-3 ${msg.from === "user" ? "justify-end" : "justify-start"}`}
+                        >
+                          {msg.from === "bot" && (
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-400 text-sm text-white shadow-md shadow-cyan-500/20 mt-0.5">
+                              🤖
+                            </div>
+                          )}
+
+                          <div
+                            className={`max-w-[85%] rounded-2xl px-4 py-3 leading-relaxed whitespace-pre-line text-xs shadow-sm ${
+                              msg.from === "user"
+                                ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-tr-none shadow-blue-500/20"
+                                : "bg-slate-800/90 text-slate-100 border border-slate-700/80 rounded-tl-none"
+                            }`}
+                          >
+                            <div className="text-[10px] font-bold opacity-60 mb-1">
+                              {msg.from === "user" ? (currentUser.name || "Super Admin") : "VST Support AI"}
+                            </div>
+                            {msg.text}
+                          </div>
+
+                          {msg.from === "user" && (
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-400 text-xs font-bold text-slate-950 shadow-md shadow-amber-500/20 mt-0.5">
+                              👑
+                            </div>
+                          )}
+                        </div>
+                      ))}
+
+                      {isChatLoading && (
+                        <div className="flex items-start gap-3 justify-start">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-400 text-sm text-white shadow-md animate-pulse">
+                            🤖
+                          </div>
+                          <div className="rounded-2xl rounded-tl-none bg-slate-800/90 border border-slate-700/80 px-4 py-3 text-xs text-cyan-300 flex items-center gap-2">
+                            <RefreshCw className="h-3.5 w-3.5 animate-spin text-cyan-400" />
+                            <span>VST Bot កំពុងគិត និងស្វែងរកចម្លើយជូនបង...</span>
+                          </div>
+                        </div>
+                      )}
+                      <div ref={adminChatBottomRef} />
+                    </div>
+
+                    {/* Chat Input Bar */}
+                    <div className="border-t border-slate-800 p-3 bg-slate-900/90 flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleSendChat()}
+                        placeholder={
+                          isAdmin
+                            ? "សួរបញ្ជា Bot គ្រប់រឿងក្នុង Web App (ឧ. តើ Member ណាខ្លះកំពុងដំណើរការ? របាយការណ៍ Leads...)"
+                            : "វាយសំណួររបស់អ្នកនៅទីនេះ..."
+                        }
+                        className="flex-1 rounded-xl border border-slate-700 bg-slate-800/80 px-4 py-2.5 text-xs text-white placeholder-slate-400 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSendChat()}
+                        disabled={isChatLoading || !chatInput.trim()}
+                        className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-cyan-500/30 transition hover:from-blue-500 hover:to-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Send className="h-4 w-4" />
+                        <span className="hidden sm:inline">ផ្ញើ</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Right Column: AI Training & Long-term Memory (Super Admin Only) */}
+                  {isAdmin && (
+                    <div className="lg:col-span-5 flex flex-col h-[540px] rounded-2xl border border-purple-500/30 bg-purple-950/10 p-4 overflow-y-auto space-y-3.5 text-xs">
+                      <div className="flex items-center justify-between pb-2 border-b border-purple-500/20">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="h-4 w-4 text-purple-400" />
+                          <h4 className="font-bold text-white text-sm">
+                            🧠 បង្រៀន & កំណត់ចំណេះដឹង AI (Memory Hub)
+                          </h4>
+                        </div>
+                        <span className="text-[10px] text-purple-300 bg-purple-500/20 px-2 py-0.5 rounded-full border border-purple-500/30 font-semibold">
+                          Supabase Synced
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-purple-200 mb-1">
+                          🎭 ១. តួនាទី & អត្តចរិត Bot (Persona)
+                        </label>
+                        <input
+                          type="text"
+                          value={aiPersona}
+                          onChange={(e) => setAiPersona(e.target.value)}
+                          placeholder="ឧ. ជំនួយការ AI របស់ VST ឆ្លាតវៃ រួសរាយ និងស្មោះត្រង់..."
+                          className="w-full rounded-xl border border-slate-700 bg-slate-900/80 p-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-purple-400"
+                        />
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-xs font-semibold text-purple-200">
+                            📚 ២. ឃ្លាំងចំណេះដឹងផលិតផល (Knowledge Base)
+                          </label>
+                          <span className="text-[10px] text-slate-400">ចងចាំក្នុង Bot ទាំងអស់</span>
+                        </div>
+                        <textarea
+                          rows={5}
+                          value={aiKnowledgeBase}
+                          onChange={(e) => setAiKnowledgeBase(e.target.value)}
+                          placeholder="ឧ. ផលិតផល VST Kidney Pro: តម្លៃ $25, ជួយសម្រួលតម្រងនោម នោមញឹក ឈឺចង្កេះ...&#10;ផលិតផល Emmi: តម្លៃ $18, ជួយបញ្ហារោគស្ត្រី ធ្លាក់ស រមាស់..."
+                          className="w-full rounded-xl border border-slate-700 bg-slate-900/80 p-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-purple-400 font-sans"
+                        />
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-xs font-semibold text-purple-200">
+                            ⛔ ៣. ច្បាប់ & បម្រាមពិសេស (Strict Rules)
+                          </label>
+                          <span className="text-[10px] text-slate-400">ការពារការឆ្លើយខុស</span>
+                        </div>
+                        <textarea
+                          rows={3}
+                          value={aiRules}
+                          onChange={(e) => setAiRules(e.target.value)}
+                          placeholder="ឧ. ហាមប្រាប់តម្លៃលើ Comment ជាដាច់ខាត! ត្រូវឆ្លើយតបបែបផ្អែមល្ហែម និងទាក់ទាញ ហើយប្រាប់ឱ្យភ្ញៀវឆែកមើល Inbox..."
+                          className="w-full rounded-xl border border-slate-700 bg-slate-900/80 p-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-purple-400 font-sans"
+                        />
+                      </div>
+
+                      {/* Save Knowledge Button */}
+                      <div className="pt-1">
+                        <button
+                          type="button"
+                          onClick={handleSaveAiKnowledge}
+                          disabled={isSavingKnowledge}
+                          className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 py-2.5 text-xs font-bold text-white shadow-lg shadow-purple-600/30 hover:from-purple-500 hover:to-indigo-500 transition disabled:opacity-50"
+                        >
+                          <span>💾</span>
+                          <span>{isSavingKnowledge ? "កំពុងរក្សាទុកក្នុង Supabase..." : "រក្សាទុកចំណេះដឹង AI (Save Memory)"}</span>
+                        </button>
+
+                        {knowledgeSavedSuccess && (
+                          <div className="mt-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-2 text-center text-xs font-semibold text-emerald-400 flex items-center justify-center gap-1.5">
+                            <CheckCircle2 className="h-4 w-4" />
+                            <span>ចំណេះដឹងត្រូវបានចងចាំក្នុង Supabase Database រួចរាល់!</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Members Table Card */}
               <div className="rounded-3xl border border-slate-800 bg-slate-900/40 p-6 shadow-xl backdrop-blur-md">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 gap-3">
@@ -2722,7 +2982,7 @@ export default function VSTAssistantApp() {
             <MessageCircle className="h-6 w-6" />
           </button>
         ) : (
-          <div className="flex h-[520px] w-84 sm:w-96 flex-col rounded-3xl border border-cyan-500/30 bg-[#0d1627] shadow-2xl shadow-cyan-950/80 overflow-hidden backdrop-blur-xl">
+          <div className="flex h-[620px] w-[360px] sm:w-[480px] md:w-[520px] flex-col rounded-3xl border border-cyan-500/40 bg-[#0d1627] shadow-2xl shadow-cyan-950/90 overflow-hidden backdrop-blur-2xl">
             {/* Chat header */}
             <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-500 p-4 text-white shadow-md">
               <div className="flex items-center gap-2.5">
@@ -2745,6 +3005,16 @@ export default function VSTAssistantApp() {
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
+                {/* Clear history button */}
+                <button
+                  type="button"
+                  onClick={handleClearChatHistory}
+                  title="សម្អាតប្រវត្តិសន្ទនា (Clear History)"
+                  className="rounded-xl p-1.5 bg-white/10 hover:bg-rose-500/80 text-white transition text-xs"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+
                 {isAdmin && (
                   <button
                     onClick={() => setIsTrainingOpen(!isTrainingOpen)}
@@ -2758,6 +3028,20 @@ export default function VSTAssistantApp() {
                     <span>{isTrainingOpen ? "💬 Chat" : "🎓 បង្រៀន Bot"}</span>
                   </button>
                 )}
+
+                {/* Expand to Admin Tab button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsChatOpen(false);
+                    setActiveTab("admin");
+                  }}
+                  title="បើកលើទំព័រ Admin & Member (ពេញទំហំ)"
+                  className="rounded-xl p-1.5 bg-white/10 hover:bg-white/20 text-white transition"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </button>
+
                 <button
                   onClick={() => setIsChatOpen(false)}
                   className="rounded-xl p-1.5 text-white/80 hover:bg-white/20 hover:text-white transition"
@@ -2876,46 +3160,6 @@ export default function VSTAssistantApp() {
               </div>
             ) : (
               <>
-                {/* Structured Category Buttons (ចុចសួរភ្លាម) */}
-                <div className="border-b border-slate-800 bg-slate-900/80 p-3">
-                  <div className="text-[11px] font-semibold text-cyan-400 mb-2 flex items-center gap-1.5">
-                    <span>⚡</span>
-                    <span>ចុចជ្រើសរើសប្រធានបទសួរភ្លាមៗ៖</span>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {isAdmin
-                      ? [
-                          { label: "📊 សង្ខេប Members", text: "សូមសង្ខេបបញ្ជីសមាជិក (Members) ទាំងអស់ក្នុង Web App និងស្ថានភាព Page របស់ពួកគាត់" },
-                          { label: "👥 អតិថិជន CRM", text: "តើពេលនេះមានអតិថិជន Leads ប៉ុន្មាននាក់ក្នុង CRM?" },
-                          { label: "⚙️ ស្ថានភាព Bot", text: "តើស្ថានភាព Bot ដំណើរការយ៉ាងណាដែរ? តើមានបញ្ហាអ្វីទេ?" },
-                          { label: "🌿 ផលិតផល VST", text: "តើផលិតផលយើងខ្ញុំមានអ្វីខ្លះ និងតម្លៃប៉ុន្មាន?" },
-                        ].map((item, i) => (
-                          <button
-                            key={i}
-                            onClick={() => handleSendChat(item.text)}
-                            className="rounded-full border border-purple-500/30 bg-purple-950/40 px-3 py-1 text-[11px] font-medium text-purple-200 transition hover:bg-purple-500/20 hover:border-purple-400 hover:text-white"
-                          >
-                            {item.label}
-                          </button>
-                        ))
-                      : [
-                          { label: "📘 ភ្ជាប់ FB Page", text: "របៀបភ្ជាប់ Facebook Page និង permissions" },
-                          { label: "⚙️ Bot Settings", text: "របៀបកំណត់ Auto Comment Reply និង DM" },
-                          { label: "🌿 ផលិតផល & សុខភាព", text: "ផលិតផលសុខភាពនារី VST និងតម្លៃ" },
-                          { label: "⚠️ FB Error", text: "ដំណោះស្រាយបញ្ហា Facebook Error" },
-                          { label: "👥 Plans & សមាជិក", text: "កម្រិត Plan និងការគ្រប់គ្រងសមាជិក" },
-                        ].map((item, i) => (
-                          <button
-                            key={i}
-                            onClick={() => handleSendChat(item.text)}
-                            className="rounded-full border border-cyan-500/20 bg-slate-800/90 px-3 py-1 text-[11px] font-medium text-slate-200 transition hover:bg-cyan-500/20 hover:border-cyan-400 hover:text-cyan-300"
-                          >
-                            {item.label}
-                          </button>
-                        ))}
-                  </div>
-                </div>
-
                 {/* Chat messages list */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-3.5 text-xs bg-[#09111f]">
                   {chatMessages.map((msg, i) => (
@@ -2940,6 +3184,18 @@ export default function VSTAssistantApp() {
                       </div>
                     </div>
                   ))}
+                  {isChatLoading && (
+                    <div className="flex items-start gap-2.5 justify-start">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-blue-600 to-cyan-400 text-xs text-white shadow-sm mt-0.5 animate-pulse">
+                        🤖
+                      </div>
+                      <div className="rounded-2xl rounded-tl-none bg-slate-800/90 border border-slate-700/80 px-3.5 py-2.5 text-xs text-cyan-300 flex items-center gap-1.5">
+                        <RefreshCw className="h-3 w-3 animate-spin text-cyan-400" />
+                        <span>កំពុងគិត និងស្វែងរកចម្លើយ...</span>
+                      </div>
+                    </div>
+                  )}
+                  <div ref={chatBottomRef} />
                 </div>
 
                 {/* Chat input */}
@@ -2954,7 +3210,8 @@ export default function VSTAssistantApp() {
                   />
                   <button
                     onClick={() => handleSendChat()}
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-md shadow-cyan-500/30 transition hover:from-blue-500 hover:to-cyan-400"
+                    disabled={isChatLoading || !chatInput.trim()}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-md shadow-cyan-500/30 transition hover:from-blue-500 hover:to-cyan-400 disabled:opacity-50"
                   >
                     <Send className="h-4 w-4" />
                   </button>

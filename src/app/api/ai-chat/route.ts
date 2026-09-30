@@ -168,12 +168,23 @@ ${trainedKnowledge}
 `;
     }
 
+    let historyText = "";
+    if (Array.isArray(body.history) && body.history.length > 0) {
+      const recent = body.history.slice(-10); // last 10 messages for continuous memory
+      historyText = `
+💬 [ប្រវត្តិសន្ទនាពីមុនៗ (Conversation History)]៖
+${recent.map((m: any) => `${m.from === "user" ? userName : "Bot"}: ${m.text}`).join("\n")}
+`;
+    }
+
     const promptText = `
 ${systemContext}
 
+${historyText}
+
 ---------------------
-សំណួរដែលត្រូវបានសួរ៖ "${message}"
-សូមឆ្លើយតបជាភាសាខ្មែរឱ្យបានល្អ និងសមរម្យបំផុត៖`;
+សំណួរថ្មីចុងក្រោយ៖ "${message}"
+សូមឆ្លើយតបជាភាសាខ្មែរឱ្យបានល្អ និងសមរម្យបំផុត ដោយស៊ីសង្វាក់គ្នានឹងប្រវត្តិសន្ទនា និងចំណេះដឹងខាងលើ៖`;
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`,
