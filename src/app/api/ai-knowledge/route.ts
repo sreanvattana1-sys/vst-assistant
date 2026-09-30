@@ -1,11 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
+export interface KnowledgeDocument {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  content: string;
+  uploadedAt: string;
+}
+
 export interface AIKnowledgeData {
   persona: string;
   knowledgeBase: string;
   rules: string;
   masterBotEnabled: boolean;
+  documents?: KnowledgeDocument[];
   updatedAt?: string;
   updatedBy?: string;
 }
@@ -46,6 +56,7 @@ export async function GET(req: NextRequest) {
           knowledgeBase: parsed.knowledgeBase || DEFAULT_KNOWLEDGE,
           rules: parsed.rules || DEFAULT_RULES,
           masterBotEnabled: typeof parsed.masterBotEnabled === "boolean" ? parsed.masterBotEnabled : true,
+          documents: Array.isArray(parsed.documents) ? parsed.documents : [],
           updatedAt: parsed.updatedAt || data.updated_at,
           updatedBy: parsed.updatedBy || "VST Super Admin",
         });
@@ -57,6 +68,7 @@ export async function GET(req: NextRequest) {
       knowledgeBase: DEFAULT_KNOWLEDGE,
       rules: DEFAULT_RULES,
       masterBotEnabled: true,
+      documents: [],
       updatedAt: new Date().toISOString(),
       updatedBy: "VST Super Admin",
     });
@@ -74,6 +86,7 @@ export async function POST(req: NextRequest) {
       knowledgeBase = DEFAULT_KNOWLEDGE,
       rules = DEFAULT_RULES,
       masterBotEnabled = true,
+      documents = [],
       updatedBy = "VST Super Admin",
     } = body;
 
@@ -82,6 +95,7 @@ export async function POST(req: NextRequest) {
       knowledgeBase: knowledgeBase.trim(),
       rules: rules.trim(),
       masterBotEnabled: Boolean(masterBotEnabled),
+      documents: Array.isArray(documents) ? documents : [],
       updatedAt: new Date().toISOString(),
       updatedBy,
     };

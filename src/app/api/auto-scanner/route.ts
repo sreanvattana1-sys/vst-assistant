@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { replyToComment, sendPrivateReply } from "@/lib/facebook";
 import { supabase } from "@/lib/supabase";
+import { generateSmartCommentReply } from "@/lib/gemini";
 
 const DEFAULT_PAGE_ID = "955747057621489";
 const DEFAULT_PAGE_TOKEN =
@@ -80,6 +81,15 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    // Check AI smart comment reply settings
+    const aiSettingsRow = settingsMap.get("vst_ai_settings");
+    let aiReplyMap: Record<string, boolean> = {};
+    if (aiSettingsRow?.dm_template) {
+      try {
+        aiReplyMap = JSON.parse(aiSettingsRow.dm_template);
+      } catch {}
+    }
+
     // 2. Build list of pages to scan
     const pagesToScan: Array<{
       id: string;
@@ -89,6 +99,7 @@ export async function GET(req: NextRequest) {
       replyTemplate?: string;
       dmTemplate?: string;
       autoDm?: boolean;
+      aiReplyEnabled?: boolean;
     }> = [
       {
         id: DEFAULT_PAGE_ID,
@@ -104,6 +115,12 @@ export async function GET(req: NextRequest) {
           settingsMap.get(DEFAULT_PAGE_ID)?.dm_template ||
           settingsMap.get("default")?.dm_template,
         autoDm: settingsMap.get(DEFAULT_PAGE_ID)?.auto_dm_enabled !== false,
+        aiReplyEnabled:
+          typeof aiReplyMap[DEFAULT_PAGE_ID] === "boolean"
+            ? aiReplyMap[DEFAULT_PAGE_ID]
+            : typeof aiReplyMap["default"] === "boolean"
+            ? aiReplyMap["default"]
+            : false,
       },
     ];
 
@@ -125,6 +142,12 @@ export async function GET(req: NextRequest) {
             pageSetting?.dm_template ||
             `សួស្ដីបង {name}! 🌸 អរគុណដែលបាន comment លើទំព័រ ${mp.name}។ តើបងចង់ដឹងព័ត៌មានលម្អិត ឬតម្លៃផលិតផលដែរទេ? ខ្ញុំអាចជួយផ្ដល់ការប្រឹក្សាជូនបងបានភ្លាមៗណា! 💬✨`,
           autoDm: pageSetting?.auto_dm_enabled !== false,
+          aiReplyEnabled:
+            typeof aiReplyMap[mp.id] === "boolean"
+              ? aiReplyMap[mp.id]
+              : typeof aiReplyMap["default"] === "boolean"
+              ? aiReplyMap["default"]
+              : false,
         });
       }
     }
@@ -217,10 +240,31 @@ export async function GET(req: NextRequest) {
                   ? `@${senderName}`
                   : "បង";
 
-                const replyTextTemplate =
-                  page.replyTemplate ||
-                  `សួស្ដី {name}! 😊 អរគុណសម្រាប់ការចាប់អារម្មណ៍លើទំព័រ ${page.name}។ ខ្ញុំបានផ្ញើព័ត៌មានលម្អិតជូនបងហើយណា 💬👉 https://m.me/${page.id}`;
-                const replyMessage = replyTextTemplate.replace(/{name}/g, userTag);
+                let replyMessage = "";
+                if (page.aiReplyEnabled) {
+                  try {
+                    const aiReply = await generateSmartCommentReply({
+                      pageName: page.name,
+                      pageId: page.id,
+                      senderName: senderName,
+                      senderId: senderId,
+                      userComment: messageText,
+                    });
+                    if (aiReply) {
+                      replyMessage = aiReply;
+                      console.log(`[Auto-Scanner] Gemini AI generated smart reply for comment ${commentId}: "${replyMessage}"`);
+                    }
+                  } catch (aiErr) {
+                    console.error("[Auto-Scanner] Gemini AI error, falling back to static template:", aiErr);
+                  }
+                }
+
+                if (!replyMessage) {
+                  const replyTextTemplate =
+                    page.replyTemplate ||
+                    `សួស្ដី {name}! 😊 អរគុណសម្រាប់ការចាប់អារម្មណ៍លើទំព័រ ${page.name}។ ខ្ញុំបានផ្ញើព័ត៌មានលម្អិតជូនបងហើយណា 💬👉 https://m.me/${page.id}`;
+                  replyMessage = replyTextTemplate.replace(/{name}/g, userTag);
+                }
 
                 const replyRes = await replyToComment({
                   pageAccessToken: page.accessToken,

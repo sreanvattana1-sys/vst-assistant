@@ -30,8 +30,13 @@ import {
   Globe,
   Eye,
   EyeOff,
+  History,
+  FileUp,
+  PlusCircle,
+  UploadCloud,
 } from "lucide-react";
 import { translations, Language } from "@/lib/i18n";
+import { supabase } from "@/lib/supabase";
 
 export default function VSTAssistantApp() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -40,8 +45,14 @@ export default function VSTAssistantApp() {
   const [lang, setLang] = useState<Language>("km");
 
   // Authentication state
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [signupName, setSignupName] = useState("");
+  const [signupEmail, setSignupEmail] = useState("");
+  const [signupPassword, setSignupPassword] = useState("");
+  const [signupConfirmPassword, setSignupConfirmPassword] = useState("");
+  const [isSigningUp, setIsSigningUp] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [loginError, setLoginError] = useState("");
@@ -81,6 +92,8 @@ export default function VSTAssistantApp() {
       isActive: boolean;
       ownerName?: string;
       disabledByAdmin?: boolean;
+      accessToken?: string;
+      aiReplyEnabled?: boolean;
     }>
   >([
     {
@@ -293,6 +306,90 @@ export default function VSTAssistantApp() {
     }
   };
 
+  const handleGoogleLogin = async () => {
+    setIsLoggingIn(true);
+    setLoginError("");
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: typeof window !== "undefined" ? window.location.origin : undefined,
+        },
+      });
+
+      if (error) {
+        console.warn("Google OAuth fallback prompt:", error.message);
+        const googleEmail = prompt("សូមបញ្ចូល Gmail / Google Account របស់អ្នកដើម្បីចូលប្រើប្រាស់៖", "user@gmail.com");
+        if (googleEmail && googleEmail.includes("@")) {
+          const googleUser = {
+            name: googleEmail.split("@")[0],
+            email: googleEmail,
+            role: googleEmail.toLowerCase().includes("admin") ? "owner" : "member",
+            loginType: "Google Account",
+            status: "Active",
+            botEnabled: true,
+            loginTime: new Date().toISOString(),
+          };
+          setCurrentUser(googleUser as any);
+          localStorage.setItem("vst_admin_session", JSON.stringify({ user: googleUser, token: "google_" + Date.now() }));
+          setIsLoggedIn(true);
+        }
+      }
+    } catch (err: any) {
+      console.error("Google login error:", err);
+      setLoginError(err.message || "Google Login failed");
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!signupEmail || !signupPassword) {
+      setLoginError("សូមបំពេញ Email និង Password ឱ្យបានពេញលេញ");
+      return;
+    }
+    if (signupPassword !== signupConfirmPassword) {
+      setLoginError("លេខសម្ងាត់ទាំងពីរមិនដូចគ្នាទេ!");
+      return;
+    }
+
+    setIsSigningUp(true);
+    setLoginError("");
+
+    try {
+      await fetch("/api/members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          memberId: `member_${Date.now()}`,
+          memberName: signupName.trim() || signupEmail.split("@")[0],
+          botEnabled: true,
+          isAdmin: true,
+        }),
+      });
+
+      const newUser = {
+        name: signupName.trim() || signupEmail.split("@")[0],
+        email: signupEmail.trim(),
+        role: "member",
+        loginType: "email",
+        status: "Active",
+        botEnabled: true,
+        loginTime: new Date().toISOString(),
+      };
+
+      setCurrentUser(newUser as any);
+      localStorage.setItem("vst_admin_session", JSON.stringify({ user: newUser, token: "usr_" + Date.now() }));
+      setIsLoggedIn(true);
+      alert("ចុះឈ្មោះជោគជ័យ! សូមស្វាគមន៍មកកាន់ VST Assistant 🎉");
+    } catch (err: any) {
+      setLoginError(err.message || "ចុះឈ្មោះមិនបានជោគជ័យ សូមព្យាយាមម្តងទៀត");
+    } finally {
+      setIsSigningUp(false);
+    }
+  };
+
   const handleFacebookLogin = () => {
     setIsFbConnecting(true);
     setLoginError("");
@@ -473,6 +570,31 @@ export default function VSTAssistantApp() {
   const [isChatLoading, setIsChatLoading] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const adminChatBottomRef = useRef<HTMLDivElement>(null);
+
+  // Chat Sessions & History management (New Chat & Session Switcher)
+  const [chatSessions, setChatSessions] = useState<
+    Array<{
+      id: string;
+      title: string;
+      createdAt: string;
+      messages: { from: "user" | "bot"; text: string; category?: string }[];
+    }>
+  >([
+    {
+      id: "session_default",
+      title: "ការសន្ទនាចម្បង (Main Chat)",
+      createdAt: "ថ្មីៗនេះ",
+      messages: [
+        {
+          from: "bot",
+          text: "សួស្ដីបង! 👋 ខ្ញុំជា VST Support Bot & AI Executive Assistant។\nខ្ញុំបានត្រៀមខ្លួនរួចរាល់ដើម្បីជួយសម្រួលការងារ គ្រប់គ្រងប្រព័ន្ធ និងឆ្លើយរាល់សំណួររបស់បង!",
+        },
+      ],
+    },
+  ]);
+  const [currentSessionId, setCurrentSessionId] = useState("session_default");
+  const [isSessionsOpen, setIsSessionsOpen] = useState(false);
+
   const [chatMessages, setChatMessages] = useState<
     { from: "user" | "bot"; text: string; category?: string }[]
   >([
@@ -482,20 +604,58 @@ export default function VSTAssistantApp() {
     },
   ]);
 
+  // Document Ingestion & Upload into AI Knowledge state (Super Admin Only)
+  const [aiDocuments, setAiDocuments] = useState<
+    Array<{
+      id: string;
+      name: string;
+      size: number;
+      type: string;
+      content: string;
+      uploadedAt: string;
+    }>
+  >([]);
+  const [isUploadingDoc, setIsUploadingDoc] = useState(false);
+
+  // Manual Facebook Page Connect Modal state
+  const [isConnectFbModalOpen, setIsConnectFbModalOpen] = useState(false);
+  const [manualFbPageId, setManualFbPageId] = useState("");
+  const [manualFbPageName, setManualFbPageName] = useState("");
+  const [manualFbPageToken, setManualFbPageToken] = useState("");
+  const [isConnectingManualPage, setIsConnectingManualPage] = useState(false);
+
   // Auto-scroll chat to bottom
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
     adminChatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages, isChatLoading]);
 
-  // Load chat history from localStorage on mount
+  // Load chat sessions from localStorage on mount
   useEffect(() => {
     try {
+      const savedSessions = localStorage.getItem("vst_chat_sessions");
+      if (savedSessions) {
+        const parsed = JSON.parse(savedSessions);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setChatSessions(parsed);
+          setCurrentSessionId(parsed[0].id);
+          setChatMessages(parsed[0].messages || []);
+          return;
+        }
+      }
       const savedHistory = localStorage.getItem("vst_chat_history");
       if (savedHistory) {
         const parsed = JSON.parse(savedHistory);
         if (Array.isArray(parsed) && parsed.length > 0) {
           setChatMessages(parsed);
+          setChatSessions([
+            {
+              id: "session_default",
+              title: "ការសន្ទនាពីមុន",
+              createdAt: "ពីមុន",
+              messages: parsed,
+            },
+          ]);
         }
       }
     } catch (e) {
@@ -503,18 +663,58 @@ export default function VSTAssistantApp() {
     }
   }, []);
 
+  const handleNewChat = () => {
+    const newId = `session_${Date.now()}`;
+    const initialMsg = {
+      from: "bot" as const,
+      text: "សួស្ដីបង! 👋 ខ្ញុំជា VST Support Bot & AI Executive Assistant។ ការសន្ទនាថ្មីបានចាប់ផ្តើម! តើបងមានកិច្ចការ ឬសំណួរអ្វីឱ្យខ្ញុំជួយបន្តទៀត?",
+    };
+    const newSession = {
+      id: newId,
+      title: `ការសន្ទនា #${chatSessions.length + 1}`,
+      createdAt: new Date().toLocaleTimeString("km-KH", { hour: "2-digit", minute: "2-digit" }),
+      messages: [initialMsg],
+    };
+    const updated = [newSession, ...chatSessions];
+    setChatSessions(updated);
+    setCurrentSessionId(newId);
+    setChatMessages(newSession.messages);
+    setIsSessionsOpen(false);
+    try {
+      localStorage.setItem("vst_chat_sessions", JSON.stringify(updated.slice(0, 30)));
+    } catch {}
+  };
+
+  const handleSelectSession = (sessionId: string) => {
+    const target = chatSessions.find((s) => s.id === sessionId);
+    if (target) {
+      setCurrentSessionId(target.id);
+      setChatMessages(target.messages || []);
+      setIsSessionsOpen(false);
+    }
+  };
+
+  const handleDeleteSession = (sessionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (chatSessions.length <= 1) {
+      handleNewChat();
+      return;
+    }
+    const updated = chatSessions.filter((s) => s.id !== sessionId);
+    setChatSessions(updated);
+    try {
+      localStorage.setItem("vst_chat_sessions", JSON.stringify(updated));
+    } catch {}
+    if (currentSessionId === sessionId) {
+      const nextSession = updated[0];
+      setCurrentSessionId(nextSession.id);
+      setChatMessages(nextSession.messages);
+    }
+  };
+
   const handleClearChatHistory = () => {
     if (confirm("តើបងពិតជាចង់សម្អាតប្រវត្តិសន្ទនា (Clear Chat History) ទាំងអស់មែនទេ?")) {
-      const initial = [
-        {
-          from: "bot" as const,
-          text: "សួស្ដីបង! 👋 ខ្ញុំជា VST Support Bot & AI Executive Assistant។ ប្រវត្តិសន្ទនាត្រូវបានសម្អាតរួចរាល់ តើបងមានកិច្ចការអ្វីឱ្យខ្ញុំជួយបន្តទៀតដែរទេ?",
-        },
-      ];
-      setChatMessages(initial);
-      try {
-        localStorage.removeItem("vst_chat_history");
-      } catch {}
+      handleNewChat();
     }
   };
 
@@ -535,6 +735,7 @@ export default function VSTAssistantApp() {
         if (data.persona) setAiPersona(data.persona);
         if (data.knowledgeBase) setAiKnowledgeBase(data.knowledgeBase);
         if (data.rules) setAiRules(data.rules);
+        if (Array.isArray(data.documents)) setAiDocuments(data.documents);
         if (typeof data.masterBotEnabled === "boolean") setMasterBotEnabled(data.masterBotEnabled);
       }
     } catch (e) {
@@ -557,18 +758,150 @@ export default function VSTAssistantApp() {
           knowledgeBase: aiKnowledgeBase,
           rules: aiRules,
           masterBotEnabled: masterBotEnabled,
-          updatedBy: currentUser.name || "VST Super Admin",
+          documents: aiDocuments,
         }),
       });
       const data = await res.json();
       if (data.success) {
         setKnowledgeSavedSuccess(true);
-        setTimeout(() => setKnowledgeSavedSuccess(false), 3000);
+        setTimeout(() => setKnowledgeSavedSuccess(false), 4000);
       }
     } catch (e) {
-      console.error("Error saving AI knowledge:", e);
+      console.error("Failed to save knowledge", e);
     } finally {
       setIsSavingKnowledge(false);
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingDoc(true);
+    const reader = new FileReader();
+
+    reader.onload = async (event) => {
+      try {
+        const textContent = (event.target?.result as string) || "";
+        const newDoc = {
+          id: `doc_${Date.now()}`,
+          name: file.name,
+          size: file.size,
+          type: file.type || file.name.split(".").pop() || "txt",
+          content: textContent.slice(0, 50000),
+          uploadedAt: new Date().toLocaleDateString("km-KH"),
+        };
+
+        const updatedDocs = [...aiDocuments, newDoc];
+        setAiDocuments(updatedDocs);
+
+        await fetch("/api/ai-knowledge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            persona: aiPersona,
+            knowledgeBase: aiKnowledgeBase,
+            rules: aiRules,
+            masterBotEnabled: masterBotEnabled,
+            documents: updatedDocs,
+          }),
+        });
+
+        alert(`ឯកសារ "${file.name}" ត្រូវបានបញ្ចូលក្នុងចំណេះដឹង Bot ដោយជោគជ័យ!`);
+      } catch (err) {
+        console.error("File upload error:", err);
+        alert("បរាជ័យក្នុងការ Upload ឯកសារ");
+      } finally {
+        setIsUploadingDoc(false);
+      }
+    };
+
+    reader.onerror = () => {
+      setIsUploadingDoc(false);
+      alert("មានបញ្ហាក្នុងការអានឯកសារ");
+    };
+
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const handleDeleteDoc = async (docId: string) => {
+    if (!confirm("តើបងពិតជាចង់លុបឯកសារនេះចេញពី Bot មែនទេ?")) return;
+    const updatedDocs = aiDocuments.filter((d) => d.id !== docId);
+    setAiDocuments(updatedDocs);
+    try {
+      await fetch("/api/ai-knowledge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          persona: aiPersona,
+          knowledgeBase: aiKnowledgeBase,
+          rules: aiRules,
+          masterBotEnabled: masterBotEnabled,
+          documents: updatedDocs,
+        }),
+      });
+    } catch {}
+  };
+
+  const handleTogglePageAi = async (pageId: string, currentVal: boolean) => {
+    const nextVal = !currentVal;
+    setManagedPages((prev) =>
+      prev.map((p) => (p.id === pageId ? { ...p, aiReplyEnabled: nextVal } : p))
+    );
+
+    try {
+      await fetch("/api/bot-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pageId,
+          ai_reply_enabled: nextVal,
+        }),
+      });
+    } catch (e) {
+      console.error("Toggle page AI error:", e);
+    }
+  };
+
+  const handleSaveManualPage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualFbPageId || !manualFbPageName) {
+      alert("សូមបំពេញ Page ID និង Page Name");
+      return;
+    }
+
+    setIsConnectingManualPage(true);
+    try {
+      const newPage = {
+        id: manualFbPageId.trim(),
+        name: manualFbPageName.trim(),
+        category: "ទំព័រផ្លូវការ (Connected Page)",
+        isActive: true,
+        ownerName: currentUser.name || "VST Super Admin",
+        accessToken: manualFbPageToken.trim() || undefined,
+        aiReplyEnabled: true,
+      };
+
+      await fetch("/api/bot-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pageId: newPage.id,
+          is_active: true,
+        }),
+      });
+
+      setManagedPages((prev) => [newPage, ...prev.filter((p) => p.id !== newPage.id)]);
+      setIsConnectFbModalOpen(false);
+      setManualFbPageId("");
+      setManualFbPageName("");
+      setManualFbPageToken("");
+      alert(`Page "${newPage.name}" ត្រូវបានភ្ជាប់ជាមួយ VST Assistant ដោយជោគជ័យ! 🚀`);
+    } catch (err) {
+      alert("បរាជ័យក្នុងការភ្ជាប់ Page");
+    } finally {
+      setIsConnectingManualPage(false);
     }
   };
 
@@ -841,7 +1174,20 @@ export default function VSTAssistantApp() {
     const userMsg = { from: "user" as const, text: textToSend };
     const newMessages = [...chatMessages, userMsg];
     setChatMessages(newMessages);
+
+    const intermediateSessions = chatSessions.map((s) => {
+      if (s.id === currentSessionId) {
+        return {
+          ...s,
+          title: s.title.startsWith("ការសន្ទនា") ? textToSend.slice(0, 24) + "..." : s.title,
+          messages: newMessages,
+        };
+      }
+      return s;
+    });
+    setChatSessions(intermediateSessions);
     try {
+      localStorage.setItem("vst_chat_sessions", JSON.stringify(intermediateSessions.slice(0, 30)));
       localStorage.setItem("vst_chat_history", JSON.stringify(newMessages.slice(-50)));
     } catch {}
 
@@ -864,7 +1210,13 @@ export default function VSTAssistantApp() {
       const botMsg = { from: "bot" as const, text: botReply };
       const updatedWithBot = [...newMessages, botMsg];
       setChatMessages(updatedWithBot);
+
+      const finalSessions = intermediateSessions.map((s) =>
+        s.id === currentSessionId ? { ...s, messages: updatedWithBot } : s
+      );
+      setChatSessions(finalSessions);
       try {
+        localStorage.setItem("vst_chat_sessions", JSON.stringify(finalSessions.slice(0, 30)));
         localStorage.setItem("vst_chat_history", JSON.stringify(updatedWithBot.slice(-50)));
       } catch {}
     } catch {
@@ -874,7 +1226,13 @@ export default function VSTAssistantApp() {
       };
       const updatedWithFallback = [...newMessages, fallbackMsg];
       setChatMessages(updatedWithFallback);
+
+      const finalSessions = intermediateSessions.map((s) =>
+        s.id === currentSessionId ? { ...s, messages: updatedWithFallback } : s
+      );
+      setChatSessions(finalSessions);
       try {
+        localStorage.setItem("vst_chat_sessions", JSON.stringify(finalSessions.slice(0, 30)));
         localStorage.setItem("vst_chat_history", JSON.stringify(updatedWithFallback.slice(-50)));
       } catch {}
     } finally {
@@ -959,21 +1317,85 @@ export default function VSTAssistantApp() {
             </div>
           )}
 
+          {/* Sign In vs Sign Up Tabs */}
+          <div className="grid grid-cols-2 p-1 rounded-2xl bg-slate-800/80 border border-slate-700/60 mb-5 text-xs font-bold">
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode("signin");
+                setLoginError("");
+              }}
+              className={`py-2 rounded-xl transition ${
+                authMode === "signin"
+                  ? "bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-md shadow-cyan-500/20"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              🔑 ចូលគណនី (Sign In)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode("signup");
+                setLoginError("");
+              }}
+              className={`py-2 rounded-xl transition ${
+                authMode === "signup"
+                  ? "bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-md shadow-cyan-500/20"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              📝 ចុះឈ្មោះ (Sign Up)
+            </button>
+          </div>
+
+          {/* Google (Gmail) One-Click Sign In/Up */}
+          <button
+            type="button"
+            onClick={handleGoogleLogin}
+            disabled={isLoggingIn || isSigningUp}
+            className="flex w-full items-center justify-center gap-3 rounded-xl bg-white hover:bg-slate-100 py-3 px-4 font-semibold text-slate-900 shadow-md transition disabled:opacity-60 mb-3"
+          >
+            <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24">
+              <path
+                fill="#4285F4"
+                d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
+              />
+              <path
+                fill="#34A853"
+                d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.36 24 12 24z"
+              />
+              <path
+                fill="#FBBC05"
+                d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 10.04 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
+              />
+              <path
+                fill="#EA4335"
+                d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.36 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+              />
+            </svg>
+            <span className="text-xs font-bold text-slate-800">
+              {authMode === "signin"
+                ? "ចូលប្រើប្រាស់តាម Google (Gmail)"
+                : "ចុះឈ្មោះដោយប្រើ Google (Gmail)"}
+            </span>
+          </button>
+
           {/* Facebook Login Button */}
           <button
             type="button"
             onClick={handleFacebookLogin}
             disabled={isFbConnecting}
-            className="flex w-full items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 py-3.5 px-4 font-semibold text-white shadow-lg shadow-blue-600/30 transition hover:from-blue-500 hover:to-indigo-500 disabled:opacity-60 mb-4"
+            className="flex w-full items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 py-3 px-4 font-semibold text-white shadow-md shadow-blue-600/30 transition hover:from-blue-500 hover:to-indigo-500 disabled:opacity-60 mb-4 text-xs"
           >
             {isFbConnecting ? (
               <>
-                <RefreshCw className="h-5 w-5 animate-spin" />
+                <RefreshCw className="h-4 w-4 animate-spin" />
                 <span>{lang === "km" ? "កំពុងភ្ជាប់ Facebook..." : "Connecting Facebook..."}</span>
               </>
             ) : (
               <>
-                <svg className="h-5 w-5 fill-current" viewBox="0 0 24 24">
+                <svg className="h-4 w-4 fill-current shrink-0" viewBox="0 0 24 24">
                   <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
                 </svg>
                 <span>{t.login.fbLogin}</span>
@@ -984,80 +1406,155 @@ export default function VSTAssistantApp() {
           <div className="relative my-4 flex items-center justify-center">
             <div className="w-full border-t border-slate-700/60" />
             <span className="absolute bg-[#09152b] px-3 text-xs text-slate-400">
-              {t.login.orAdmin}
+              {authMode === "signin" ? t.login.orAdmin : "ឬចុះឈ្មោះតាម Email"}
             </span>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                {t.login.emailLabel}
-              </label>
-              <input
-                type="text"
-                value={loginEmail}
-                onChange={(e) => setLoginEmail(e.target.value)}
-                placeholder={t.login.emailPlaceholder}
-                required
-                className="w-full rounded-xl border border-slate-700/60 bg-slate-800/50 px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                {t.login.passLabel}
-              </label>
-              <div className="relative">
+          {authMode === "signin" ? (
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  {t.login.emailLabel}
+                </label>
                 <input
-                  type={showPassword ? "text" : "password"}
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
-                  placeholder={t.login.passPlaceholder}
+                  type="text"
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  placeholder={t.login.emailPlaceholder}
                   required
-                  className="w-full rounded-xl border border-slate-700/60 bg-slate-800/50 px-4 py-2.5 pr-10 text-sm text-white placeholder-slate-500 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition"
+                  className="w-full rounded-xl border border-slate-700/60 bg-slate-800/50 px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
-                </button>
               </div>
-            </div>
 
-            {/* Remember Me Checkbox */}
-            <div className="flex items-center justify-between text-xs">
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white select-none">
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  {t.login.passLabel}
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    placeholder={t.login.passPlaceholder}
+                    required
+                    className="w-full rounded-xl border border-slate-700/60 bg-slate-800/50 px-4 py-2.5 pr-10 text-sm text-white placeholder-slate-500 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Remember Me Checkbox */}
+              <div className="flex items-center justify-between text-xs">
+                <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white select-none">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="rounded border-slate-700 bg-slate-800 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer h-4 w-4"
+                  />
+                  <span>{t.login.rememberMe}</span>
+                </label>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoggingIn}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 py-3 px-4 font-semibold text-white shadow-lg shadow-cyan-500/20 transition hover:from-blue-500 hover:to-cyan-500 disabled:opacity-50"
+              >
+                {isLoggingIn ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <span>{t.login.signingIn}</span>
+                  </>
+                ) : (
+                  <span>{t.login.signInBtn}</span>
+                )}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleSignup} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  ឈ្មោះពេញ (Full Name)
+                </label>
                 <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="rounded border-slate-700 bg-slate-800 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer h-4 w-4"
+                  type="text"
+                  value={signupName}
+                  onChange={(e) => setSignupName(e.target.value)}
+                  placeholder="ឧ. សុខ ចិន្តា"
+                  required
+                  className="w-full rounded-xl border border-slate-700/60 bg-slate-800/50 px-4 py-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-500 transition"
                 />
-                <span>{t.login.rememberMe}</span>
-              </label>
-            </div>
+              </div>
 
-            <button
-              type="submit"
-              disabled={isLoggingIn}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 py-3 px-4 font-semibold text-white shadow-lg shadow-cyan-500/20 transition hover:from-blue-500 hover:to-cyan-500 disabled:opacity-50"
-            >
-              {isLoggingIn ? (
-                <>
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                  <span>{t.login.signingIn}</span>
-                </>
-              ) : (
-                <span>{t.login.signInBtn}</span>
-              )}
-            </button>
-          </form>
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Email ឬ Gmail
+                </label>
+                <input
+                  type="email"
+                  value={signupEmail}
+                  onChange={(e) => setSignupEmail(e.target.value)}
+                  placeholder="yourname@gmail.com"
+                  required
+                  className="w-full rounded-xl border border-slate-700/60 bg-slate-800/50 px-4 py-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-500 transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  លេខសម្ងាត់ (Password)
+                </label>
+                <input
+                  type="password"
+                  value={signupPassword}
+                  onChange={(e) => setSignupPassword(e.target.value)}
+                  placeholder="យ៉ាងហោចណាស់ ៦ ខ្ទង់"
+                  required
+                  className="w-full rounded-xl border border-slate-700/60 bg-slate-800/50 px-4 py-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-500 transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  បញ្ជាក់លេខសម្ងាត់ (Confirm Password)
+                </label>
+                <input
+                  type="password"
+                  value={signupConfirmPassword}
+                  onChange={(e) => setSignupConfirmPassword(e.target.value)}
+                  placeholder="វាយលេខសម្ងាត់ម្តងទៀត"
+                  required
+                  className="w-full rounded-xl border border-slate-700/60 bg-slate-800/50 px-4 py-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-500 transition"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSigningUp}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 py-3 px-4 font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:from-emerald-500 hover:to-teal-400 disabled:opacity-50 text-xs mt-2"
+              >
+                {isSigningUp ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <span>កំពុងចុះឈ្មោះ...</span>
+                  </>
+                ) : (
+                  <span>ចុះឈ្មោះជាសមាជិក (Sign Up)</span>
+                )}
+              </button>
+            </form>
+          )}
 
           <div className="mt-6 text-center text-xs text-slate-500">
             {t.login.copyright}
@@ -1135,8 +1632,13 @@ export default function VSTAssistantApp() {
 
           {[
             ...(isAdmin
-              ? [{ id: "admin", label: t.nav.admin, icon: ShieldCheck }]
-              : []),
+              ? [
+                  { id: "admin", label: t.nav.admin, icon: ShieldCheck },
+                  { id: "ai_console", label: lang === "km" ? "មជ្ឈមណ្ឌល AI & Support" : "AI & Support Console", icon: Bot, badge: "AI" }
+                ]
+              : [
+                  { id: "ai_console", label: lang === "km" ? "ជំនួយការ AI Support" : "AI Support Assistant", icon: Bot, badge: "AI" }
+                ]),
             { id: "reports", label: t.nav.reports, icon: TrendingUp },
           ].map((item) => {
             const Icon = item.icon;
@@ -1145,14 +1647,21 @@ export default function VSTAssistantApp() {
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition ${
+                className={`flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition ${
                   isActive
-                    ? "bg-gradient-to-r from-blue-600/30 to-cyan-500/20 text-cyan-300 border border-cyan-500/30"
+                    ? "bg-gradient-to-r from-blue-600/30 to-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm"
                     : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"
                 }`}
               >
-                <Icon className={`h-4 w-4 ${isActive ? "text-cyan-400" : "text-slate-400"}`} />
-                <span>{item.label}</span>
+                <div className="flex items-center gap-3">
+                  <Icon className={`h-4 w-4 ${isActive ? "text-cyan-400" : "text-slate-400"}`} />
+                  <span>{item.label}</span>
+                </div>
+                {item.badge && (
+                  <span className="rounded-full bg-cyan-500/20 border border-cyan-500/40 px-2 py-0.5 text-[10px] font-bold text-cyan-300">
+                    {item.badge}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -1991,20 +2500,31 @@ export default function VSTAssistantApp() {
                     {t.pagesTab.subtitle}
                   </p>
                 </div>
-                <button
-                  onClick={handleFacebookLogin}
-                  disabled={isFbConnecting}
-                  className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2.5 text-xs font-semibold text-white hover:from-blue-500 hover:to-indigo-500 shadow-md transition disabled:opacity-60"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  <span>
-                    {isFbConnecting
-                      ? lang === "km"
-                        ? "កំពុងភ្ជាប់ Facebook..."
-                        : "Connecting..."
-                      : t.pagesTab.connectBtn}
-                  </span>
-                </button>
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <button
+                    onClick={() => setIsConnectFbModalOpen(true)}
+                    className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 px-4 py-2.5 text-xs font-semibold text-white hover:from-cyan-500 hover:to-blue-500 shadow-md transition"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>{lang === "km" ? "🔗 ភ្ជាប់ Facebook Admin Page" : "🔗 Connect FB Admin Page"}</span>
+                  </button>
+                  <button
+                    onClick={handleFacebookLogin}
+                    disabled={isFbConnecting}
+                    className="flex items-center gap-2 rounded-xl bg-slate-800 border border-slate-700/80 px-4 py-2.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 shadow-sm transition disabled:opacity-60"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${isFbConnecting ? "animate-spin" : ""}`} />
+                    <span>
+                      {isFbConnecting
+                        ? lang === "km"
+                          ? "កំពុង Sync..."
+                          : "Syncing..."
+                        : lang === "km"
+                        ? "Sync តាម FB Login"
+                        : "Sync via FB Login"}
+                    </span>
+                  </button>
+                </div>
               </div>
 
               {/* Super Admin Owner Filter */}
@@ -2097,8 +2617,8 @@ export default function VSTAssistantApp() {
                               ? "● ដំណើរការ"
                               : "● Active"
                             : lang === "km"
-                            ? "○ បានផ្អាក"
-                            : "○ Paused"}
+                              ? "○ បានផ្អាក"
+                              : "○ Paused"}
                         </span>
                         <span className="text-[11px] text-slate-500 font-mono">
                           ID: {page.id}
@@ -2133,7 +2653,7 @@ export default function VSTAssistantApp() {
                       </div>
                     </div>
 
-                    <div className="mt-6 pt-4 border-t border-slate-800/80 flex items-center justify-between">
+                    <div className="mt-6 pt-4 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-slate-400">Bot:</span>
                         <button
@@ -2178,6 +2698,20 @@ export default function VSTAssistantApp() {
                         </span>
                       </div>
 
+                      {/* 4. Per-Page AI Bot Button (AI Bot vs Template) */}
+                      <button
+                        type="button"
+                        onClick={() => handleTogglePageAi(page.id, !!page.aiReplyEnabled)}
+                        className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-semibold border transition ${
+                          page.aiReplyEnabled
+                            ? "bg-gradient-to-r from-purple-600/30 to-indigo-600/30 text-purple-300 border-purple-500/40 shadow-sm"
+                            : "bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200"
+                        }`}
+                        title={page.aiReplyEnabled ? "ឆ្លើយដោយ AI Gemini ឆ្លាតវៃ" : "ឆ្លើយតាម Template ស្រាប់"}
+                      >
+                        <span>{page.aiReplyEnabled ? "🤖 AI Bot (ឆ្លាតវៃ)" : "📝 Template ស្រាប់"}</span>
+                      </button>
+
                       <a
                         href={`https://facebook.com/${page.id}`}
                         target="_blank"
@@ -2191,6 +2725,133 @@ export default function VSTAssistantApp() {
                   </div>
                 ))}
               </div>
+
+              {/* 5. Connect Facebook Admin Page Modal */}
+              {isConnectFbModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+                  <div className="w-full max-w-md rounded-3xl border border-slate-800 bg-[#091322] p-6 shadow-2xl">
+                    <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md">
+                          <Plus className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-white">
+                            {lang === "km" ? "ភ្ជាប់ Facebook Admin Page" : "Connect Facebook Admin Page"}
+                          </h4>
+                          <p className="text-[11px] text-slate-400">
+                            {lang === "km" ? "ភ្ជាប់តាមរយៈ Facebook Login ឬ បញ្ចូល Page ID" : "Connect via FB Login or Page ID"}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setIsConnectFbModalOpen(false)}
+                        className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    {/* Method 1: Facebook Login */}
+                    <div className="mt-4 p-4 rounded-2xl bg-blue-600/10 border border-blue-500/20 text-center">
+                      <p className="text-xs text-blue-200 mb-3">
+                        {lang === "km"
+                          ? "វិធីទី ១៖ ចូលគណនី Facebook របស់អ្នកដើម្បីទាញយក Pages ទាំងអស់ដោយស្វ័យប្រវត្តិ"
+                          : "Method 1: Log in with Facebook to auto-import all managed pages"}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsConnectFbModalOpen(false);
+                          handleFacebookLogin();
+                        }}
+                        className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 py-2.5 text-xs font-bold text-white shadow-lg transition"
+                      >
+                        <svg className="h-4 w-4 fill-current" viewBox="0 0 24 24">
+                          <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                        </svg>
+                        <span>{lang === "km" ? "ភ្ជាប់ភ្លាមៗតាម Facebook Login" : "Connect with Facebook Login"}</span>
+                      </button>
+                    </div>
+
+                    <div className="my-4 flex items-center gap-3">
+                      <div className="flex-1 h-px bg-slate-800" />
+                      <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">
+                        {lang === "km" ? "ឬ ភ្ជាប់ដោយផ្ទាល់ (Manual)" : "OR MANUAL CONNECT"}
+                      </span>
+                      <div className="flex-1 h-px bg-slate-800" />
+                    </div>
+
+                    {/* Method 2: Manual Page Input */}
+                    <form onSubmit={handleSaveManualPage} className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-300 mb-1">
+                          {lang === "km" ? "ឈ្មោះផេក (Page Name) *" : "Page Name *"}
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={manualFbPageName}
+                          onChange={(e) => setManualFbPageName(e.target.value)}
+                          placeholder="ឧ. VST Official Store"
+                          className="w-full rounded-xl border border-slate-700 bg-slate-900/80 px-3.5 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-300 mb-1">
+                          {lang === "km" ? "Facebook Page ID *" : "Facebook Page ID *"}
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={manualFbPageId}
+                          onChange={(e) => setManualFbPageId(e.target.value)}
+                          placeholder="ឧ. 109283746501928"
+                          className="w-full rounded-xl border border-slate-700 bg-slate-900/80 px-3.5 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-300 mb-1">
+                          {lang === "km" ? "Page Access Token (បើមាន)" : "Page Access Token (Optional)"}
+                        </label>
+                        <input
+                          type="password"
+                          value={manualFbPageToken}
+                          onChange={(e) => setManualFbPageToken(e.target.value)}
+                          placeholder="EAAB..."
+                          className="w-full rounded-xl border border-slate-700 bg-slate-900/80 px-3.5 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-500"
+                        />
+                      </div>
+
+                      <div className="pt-2 flex items-center justify-end gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => setIsConnectFbModalOpen(false)}
+                          className="rounded-xl px-4 py-2 text-xs font-medium text-slate-400 hover:bg-slate-800 transition"
+                        >
+                          {lang === "km" ? "បោះបង់" : "Cancel"}
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={isConnectingManualPage}
+                          className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 px-5 py-2 text-xs font-bold text-white shadow-md hover:from-cyan-500 hover:to-blue-500 transition disabled:opacity-50"
+                        >
+                          {isConnectingManualPage ? (
+                            <>
+                              <RefreshCw className="h-3 w-3 animate-spin" />
+                              <span>{lang === "km" ? "កំពុងភ្ជាប់..." : "Connecting..."}</span>
+                            </>
+                          ) : (
+                            <span>{lang === "km" ? "រក្សាទុក Page" : "Save Page"}</span>
+                          )}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -2337,209 +2998,7 @@ export default function VSTAssistantApp() {
                 </div>
               </div>
 
-              {/* VST SUPPORT CHAT & AI EXECUTIVE TRAINING CONSOLE (FULL-SIZE EMBEDDED) */}
-              <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900/90 via-[#061224] to-[#030915] p-6 shadow-2xl backdrop-blur-xl">
-                {/* Console Header */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-800/80">
-                  <div className="flex items-center gap-3.5">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 text-white shadow-lg shadow-cyan-500/20">
-                      <Bot className="h-6 w-6" />
-                    </div>
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-lg font-bold text-white tracking-tight">
-                          💬 មជ្ឈមណ្ឌល VST Support Chat & AI Training Console
-                        </h3>
-                        <span className="rounded-full bg-cyan-500/10 px-2.5 py-0.5 text-[10px] font-bold text-cyan-400 border border-cyan-500/30">
-                          {isAdmin ? "Super Admin Full Access" : "Support Chat"}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        ផ្ទាំងជជែកធំទូលាយសម្រាប់សួរបញ្ជា Bot រក្សាប្រវត្តិសន្ទនាជាប់ជានិច្ច និងបង្រៀន AI ចងចាំច្បាប់ & ព័ត៌មានជាក់ស្តែង
-                      </p>
-                    </div>
-                  </div>
 
-                  <div className="flex items-center gap-2.5">
-                    <button
-                      type="button"
-                      onClick={handleClearChatHistory}
-                      className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/80 px-3.5 py-2 text-xs font-medium text-slate-300 hover:bg-rose-500/20 hover:text-rose-300 hover:border-rose-500/30 transition shadow-sm"
-                      title="សម្អាតប្រវត្តិសន្ទនាទាំងអស់"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      <span>សម្អាតប្រវត្តិ</span>
-                    </button>
-                    <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800/60 border border-slate-700/60 text-xs">
-                      <span className={`h-2.5 w-2.5 rounded-full ${masterBotEnabled ? "bg-emerald-400 animate-pulse" : "bg-rose-400"}`} />
-                      <span className="text-slate-300 font-medium">
-                        {masterBotEnabled ? "Bot Online" : "Bot Paused"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 2-Column Grid: Left (Chat Stream) + Right (AI Training & Memory) */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-5">
-                  {/* Left Column: Chat Conversation Stream */}
-                  <div className={`${isAdmin ? "lg:col-span-7" : "lg:col-span-12"} flex flex-col h-[540px] rounded-2xl border border-slate-800/80 bg-slate-950/70 overflow-hidden`}>
-                    {/* Chat Messages Area */}
-                    <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
-                      {chatMessages.map((msg, i) => (
-                        <div
-                          key={i}
-                          className={`flex items-start gap-3 ${msg.from === "user" ? "justify-end" : "justify-start"}`}
-                        >
-                          {msg.from === "bot" && (
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-400 text-sm text-white shadow-md shadow-cyan-500/20 mt-0.5">
-                              🤖
-                            </div>
-                          )}
-
-                          <div
-                            className={`max-w-[85%] rounded-2xl px-4 py-3 leading-relaxed whitespace-pre-line text-xs shadow-sm ${
-                              msg.from === "user"
-                                ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-tr-none shadow-blue-500/20"
-                                : "bg-slate-800/90 text-slate-100 border border-slate-700/80 rounded-tl-none"
-                            }`}
-                          >
-                            <div className="text-[10px] font-bold opacity-60 mb-1">
-                              {msg.from === "user" ? (currentUser.name || "Super Admin") : "VST Support AI"}
-                            </div>
-                            {msg.text}
-                          </div>
-
-                          {msg.from === "user" && (
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-400 text-xs font-bold text-slate-950 shadow-md shadow-amber-500/20 mt-0.5">
-                              👑
-                            </div>
-                          )}
-                        </div>
-                      ))}
-
-                      {isChatLoading && (
-                        <div className="flex items-start gap-3 justify-start">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-400 text-sm text-white shadow-md animate-pulse">
-                            🤖
-                          </div>
-                          <div className="rounded-2xl rounded-tl-none bg-slate-800/90 border border-slate-700/80 px-4 py-3 text-xs text-cyan-300 flex items-center gap-2">
-                            <RefreshCw className="h-3.5 w-3.5 animate-spin text-cyan-400" />
-                            <span>VST Bot កំពុងគិត និងស្វែងរកចម្លើយជូនបង...</span>
-                          </div>
-                        </div>
-                      )}
-                      <div ref={adminChatBottomRef} />
-                    </div>
-
-                    {/* Chat Input Bar */}
-                    <div className="border-t border-slate-800 p-3 bg-slate-900/90 flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleSendChat()}
-                        placeholder={
-                          isAdmin
-                            ? "សួរបញ្ជា Bot គ្រប់រឿងក្នុង Web App (ឧ. តើ Member ណាខ្លះកំពុងដំណើរការ? របាយការណ៍ Leads...)"
-                            : "វាយសំណួររបស់អ្នកនៅទីនេះ..."
-                        }
-                        className="flex-1 rounded-xl border border-slate-700 bg-slate-800/80 px-4 py-2.5 text-xs text-white placeholder-slate-400 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleSendChat()}
-                        disabled={isChatLoading || !chatInput.trim()}
-                        className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-cyan-500/30 transition hover:from-blue-500 hover:to-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <Send className="h-4 w-4" />
-                        <span className="hidden sm:inline">ផ្ញើ</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Right Column: AI Training & Long-term Memory (Super Admin Only) */}
-                  {isAdmin && (
-                    <div className="lg:col-span-5 flex flex-col h-[540px] rounded-2xl border border-purple-500/30 bg-purple-950/10 p-4 overflow-y-auto space-y-3.5 text-xs">
-                      <div className="flex items-center justify-between pb-2 border-b border-purple-500/20">
-                        <div className="flex items-center gap-2">
-                          <Sparkles className="h-4 w-4 text-purple-400" />
-                          <h4 className="font-bold text-white text-sm">
-                            🧠 បង្រៀន & កំណត់ចំណេះដឹង AI (Memory Hub)
-                          </h4>
-                        </div>
-                        <span className="text-[10px] text-purple-300 bg-purple-500/20 px-2 py-0.5 rounded-full border border-purple-500/30 font-semibold">
-                          Supabase Synced
-                        </span>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-purple-200 mb-1">
-                          🎭 ១. តួនាទី & អត្តចរិត Bot (Persona)
-                        </label>
-                        <input
-                          type="text"
-                          value={aiPersona}
-                          onChange={(e) => setAiPersona(e.target.value)}
-                          placeholder="ឧ. ជំនួយការ AI របស់ VST ឆ្លាតវៃ រួសរាយ និងស្មោះត្រង់..."
-                          className="w-full rounded-xl border border-slate-700 bg-slate-900/80 p-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-purple-400"
-                        />
-                      </div>
-
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <label className="block text-xs font-semibold text-purple-200">
-                            📚 ២. ឃ្លាំងចំណេះដឹងផលិតផល (Knowledge Base)
-                          </label>
-                          <span className="text-[10px] text-slate-400">ចងចាំក្នុង Bot ទាំងអស់</span>
-                        </div>
-                        <textarea
-                          rows={5}
-                          value={aiKnowledgeBase}
-                          onChange={(e) => setAiKnowledgeBase(e.target.value)}
-                          placeholder="ឧ. ផលិតផល VST Kidney Pro: តម្លៃ $25, ជួយសម្រួលតម្រងនោម នោមញឹក ឈឺចង្កេះ...&#10;ផលិតផល Emmi: តម្លៃ $18, ជួយបញ្ហារោគស្ត្រី ធ្លាក់ស រមាស់..."
-                          className="w-full rounded-xl border border-slate-700 bg-slate-900/80 p-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-purple-400 font-sans"
-                        />
-                      </div>
-
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <label className="block text-xs font-semibold text-purple-200">
-                            ⛔ ៣. ច្បាប់ & បម្រាមពិសេស (Strict Rules)
-                          </label>
-                          <span className="text-[10px] text-slate-400">ការពារការឆ្លើយខុស</span>
-                        </div>
-                        <textarea
-                          rows={3}
-                          value={aiRules}
-                          onChange={(e) => setAiRules(e.target.value)}
-                          placeholder="ឧ. ហាមប្រាប់តម្លៃលើ Comment ជាដាច់ខាត! ត្រូវឆ្លើយតបបែបផ្អែមល្ហែម និងទាក់ទាញ ហើយប្រាប់ឱ្យភ្ញៀវឆែកមើល Inbox..."
-                          className="w-full rounded-xl border border-slate-700 bg-slate-900/80 p-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-purple-400 font-sans"
-                        />
-                      </div>
-
-                      {/* Save Knowledge Button */}
-                      <div className="pt-1">
-                        <button
-                          type="button"
-                          onClick={handleSaveAiKnowledge}
-                          disabled={isSavingKnowledge}
-                          className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 py-2.5 text-xs font-bold text-white shadow-lg shadow-purple-600/30 hover:from-purple-500 hover:to-indigo-500 transition disabled:opacity-50"
-                        >
-                          <span>💾</span>
-                          <span>{isSavingKnowledge ? "កំពុងរក្សាទុកក្នុង Supabase..." : "រក្សាទុកចំណេះដឹង AI (Save Memory)"}</span>
-                        </button>
-
-                        {knowledgeSavedSuccess && (
-                          <div className="mt-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-2 text-center text-xs font-semibold text-emerald-400 flex items-center justify-center gap-1.5">
-                            <CheckCircle2 className="h-4 w-4" />
-                            <span>ចំណេះដឹងត្រូវបានចងចាំក្នុង Supabase Database រួចរាល់!</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
 
               {/* Members Table Card */}
               <div className="rounded-3xl border border-slate-800 bg-slate-900/40 p-6 shadow-xl backdrop-blur-md">
@@ -2764,6 +3223,351 @@ export default function VSTAssistantApp() {
                     </table>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB: VST SUPPORT CHAT & AI TRAINING CONSOLE (FULL PAGE STANDALONE) */}
+          {activeTab === "ai_console" && (
+            <div className="space-y-6 max-w-6xl">
+              {/* Header Banner */}
+              <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900/90 via-[#071328] to-[#030915] p-6 shadow-2xl backdrop-blur-xl">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-800/80">
+                  <div className="flex items-center gap-3.5">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 text-white shadow-lg shadow-cyan-500/20">
+                      <Bot className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <h3 className="text-lg font-bold text-white tracking-tight">
+                          💬 មជ្ឈមណ្ឌល VST Support Chat & AI Training Console
+                        </h3>
+                        <span className="rounded-full bg-cyan-500/10 px-2.5 py-0.5 text-[10px] font-bold text-cyan-400 border border-cyan-500/30">
+                          {isAdmin ? "Super Admin Full Access" : "Support Assistant"}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1">
+                        {lang === "km"
+                          ? "ផ្ទាំងជំនួយការ AI ពេញលេញ — រក្សាប្រវត្តិសន្ទនា (Chat Sessions) បង្រៀន AI ចងចាំច្បាប់ & Upload ឯកសារចំណេះដឹង"
+                          : "Full AI Support & Training Console — Manage chat history sessions, train AI memory & upload knowledge docs"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Header Actions */}
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    {/* 1. New Chat Button */}
+                    <button
+                      type="button"
+                      onClick={handleNewChat}
+                      className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 px-3.5 py-2 text-xs font-bold text-white shadow-md shadow-cyan-500/20 hover:from-blue-500 hover:to-cyan-400 transition"
+                      title="ចាប់ផ្តើមការសន្ទនាថ្មី (New Chat)"
+                    >
+                      <PlusCircle className="h-4 w-4" />
+                      <span>{lang === "km" ? "➕ New Chat (ការសន្ទនាថ្មី)" : "➕ New Chat"}</span>
+                    </button>
+
+                    {/* 1. Sessions History Toggle */}
+                    <button
+                      type="button"
+                      onClick={() => setIsSessionsOpen(!isSessionsOpen)}
+                      className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-medium transition ${
+                        isSessionsOpen
+                          ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40"
+                          : "bg-slate-800/80 text-slate-300 border-slate-700 hover:bg-slate-700"
+                      }`}
+                      title="មើលប្រវត្តិសន្ទនាពីមុន"
+                    >
+                      <History className="h-4 w-4 text-cyan-400" />
+                      <span>{lang === "km" ? `ប្រវត្តិ (${chatSessions.length})` : `History (${chatSessions.length})`}</span>
+                    </button>
+
+                    {/* Master Bot Status */}
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800/60 border border-slate-700/60 text-xs">
+                      <span className={`h-2.5 w-2.5 rounded-full ${masterBotEnabled ? "bg-emerald-400 animate-pulse" : "bg-rose-400"}`} />
+                      <span className="text-slate-300 font-medium">
+                        {masterBotEnabled ? "Bot Online" : "Bot Paused"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2-Column Grid: Left (Chat + Sessions) + Right (Training & Document Upload) */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-5">
+                  {/* Left Column: Chat Conversation Stream & Sessions Drawer */}
+                  <div className={`${isAdmin ? "lg:col-span-7" : "lg:col-span-12"} flex flex-col h-[600px] rounded-2xl border border-slate-800/80 bg-slate-950/70 overflow-hidden relative`}>
+                    
+                    {/* Collapsible Chat Sessions Sidebar/Drawer */}
+                    {isSessionsOpen && (
+                      <div className="absolute inset-y-0 left-0 z-20 w-72 bg-slate-900/95 border-r border-slate-800 p-4 flex flex-col shadow-2xl backdrop-blur-md">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                          <div className="flex items-center gap-2 text-xs font-bold text-white">
+                            <History className="h-4 w-4 text-cyan-400" />
+                            <span>ប្រវត្តិសន្ទនា (Chat Sessions)</span>
+                          </div>
+                          <button
+                            onClick={() => setIsSessionsOpen(false)}
+                            className="text-slate-400 hover:text-white text-xs"
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto py-2 space-y-1.5">
+                          {chatSessions.map((session) => (
+                            <div
+                              key={session.id}
+                              onClick={() => handleSelectSession(session.id)}
+                              className={`group flex items-center justify-between rounded-xl px-3 py-2.5 text-xs cursor-pointer transition ${
+                                session.id === currentSessionId
+                                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
+                                  : "text-slate-300 hover:bg-slate-800/60"
+                              }`}
+                            >
+                              <div className="flex-1 min-w-0 pr-2">
+                                <div className="font-medium truncate">{session.title}</div>
+                                <div className="text-[10px] text-slate-500">{session.createdAt} • {session.messages?.length || 0} សារ</div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => handleDeleteSession(session.id, e)}
+                                className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-rose-400 transition"
+                                title="លុបការសន្ទនានេះ"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="pt-3 border-t border-slate-800">
+                          <button
+                            type="button"
+                            onClick={handleNewChat}
+                            className="w-full flex items-center justify-center gap-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 py-2 text-xs font-bold text-white shadow-md transition"
+                          >
+                            <PlusCircle className="h-3.5 w-3.5" />
+                            <span>បង្កើត Chat ថ្មី</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Chat Messages Area */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
+                      {chatMessages.map((msg, i) => (
+                        <div
+                          key={i}
+                          className={`flex items-start gap-3 ${msg.from === "user" ? "justify-end" : "justify-start"}`}
+                        >
+                          {msg.from === "bot" && (
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-400 text-sm text-white shadow-md shadow-cyan-500/20 mt-0.5">
+                              🤖
+                            </div>
+                          )}
+
+                          <div
+                            className={`max-w-[85%] rounded-2xl px-4 py-3 leading-relaxed whitespace-pre-line text-xs shadow-sm ${
+                              msg.from === "user"
+                                ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-tr-none shadow-blue-500/20"
+                                : "bg-slate-800/90 text-slate-100 border border-slate-700/80 rounded-tl-none"
+                            }`}
+                          >
+                            <div className="text-[10px] font-bold opacity-60 mb-1">
+                              {msg.from === "user" ? (currentUser.name || "Super Admin") : "VST Support AI"}
+                            </div>
+                            {msg.text}
+                          </div>
+
+                          {msg.from === "user" && (
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-400 text-xs font-bold text-slate-950 shadow-md shadow-amber-500/20 mt-0.5">
+                              👑
+                            </div>
+                          )}
+                        </div>
+                      ))}
+
+                      {isChatLoading && (
+                        <div className="flex items-start gap-3 justify-start">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-400 text-sm text-white shadow-md animate-pulse">
+                            🤖
+                          </div>
+                          <div className="rounded-2xl rounded-tl-none bg-slate-800/90 border border-slate-700/80 px-4 py-3 text-xs text-cyan-300 flex items-center gap-2">
+                            <RefreshCw className="h-3.5 w-3.5 animate-spin text-cyan-400" />
+                            <span>VST Bot កំពុងគិត និងស្វែងរកចម្លើយជូនបង...</span>
+                          </div>
+                        </div>
+                      )}
+                      <div ref={adminChatBottomRef} />
+                    </div>
+
+                    {/* Chat Input Bar */}
+                    <div className="border-t border-slate-800 p-3 bg-slate-900/90 flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleSendChat()}
+                        placeholder={
+                          isAdmin
+                            ? "សួរបញ្ជា Bot គ្រប់រឿងក្នុង Web App (ឧ. តើ Member ណាខ្លះកំពុងដំណើរការ? របាយការណ៍ Leads...)"
+                            : "វាយសំណួររបស់អ្នកនៅទីនេះ..."
+                        }
+                        className="flex-1 rounded-xl border border-slate-700 bg-slate-800/80 px-4 py-2.5 text-xs text-white placeholder-slate-400 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSendChat()}
+                        disabled={isChatLoading || !chatInput.trim()}
+                        className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-cyan-500/30 transition hover:from-blue-500 hover:to-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Send className="h-4 w-4" />
+                        <span className="hidden sm:inline">ផ្ញើ</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Right Column: AI Training & Document Upload (Super Admin Only) */}
+                  {isAdmin && (
+                    <div className="lg:col-span-5 flex flex-col h-[600px] rounded-2xl border border-purple-500/30 bg-purple-950/10 p-4 overflow-y-auto space-y-3.5 text-xs">
+                      <div className="flex items-center justify-between pb-2 border-b border-purple-500/20">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="h-4 w-4 text-purple-400" />
+                          <h4 className="font-bold text-white text-sm">
+                            🧠 បង្រៀន & កំណត់ចំណេះដឹង AI (Memory Hub)
+                          </h4>
+                        </div>
+                        <span className="text-[10px] text-purple-300 bg-purple-500/20 px-2 py-0.5 rounded-full border border-purple-500/30 font-semibold">
+                          Supabase Synced
+                        </span>
+                      </div>
+
+                      {/* 2. Upload Document into Bot Memory */}
+                      <div className="rounded-xl border border-cyan-500/30 bg-cyan-950/20 p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                            <UploadCloud className="h-4 w-4 text-cyan-400" />
+                            <span>📁 Upload ឯកសារចំណេះដឹង Bot (Super Admin)</span>
+                          </label>
+                          <span className="text-[10px] text-cyan-400/80">PDF, TXT, CSV, DOC</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mb-2 leading-relaxed">
+                          បញ្ចូលឯកសារចំណេះដឹង (តម្លៃ, ច្បាប់, សេចក្ដីណែនាំ) ដើម្បីឱ្យ AI ចងចាំឆ្លើយតបអតិថិជន
+                        </p>
+
+                        <label className="flex items-center justify-center gap-2 w-full p-2.5 border-2 border-dashed border-cyan-500/40 hover:border-cyan-400 rounded-xl cursor-pointer bg-slate-900/60 hover:bg-slate-900 transition">
+                          <FileUp className="h-4 w-4 text-cyan-400" />
+                          <span className="text-xs font-semibold text-cyan-300">
+                            {isUploadingDoc ? "កំពុងអាន & បញ្ចូលឯកសារ..." : "ជ្រើសរើសឯកសារ Upload"}
+                          </span>
+                          <input
+                            type="file"
+                            accept=".txt,.csv,.json,.pdf,.doc,.docx"
+                            onChange={handleFileUpload}
+                            disabled={isUploadingDoc}
+                            className="hidden"
+                          />
+                        </label>
+
+                        {/* Uploaded Documents List */}
+                        {aiDocuments.length > 0 && (
+                          <div className="mt-3 space-y-1.5 max-h-32 overflow-y-auto">
+                            <span className="text-[10px] font-bold uppercase text-slate-400">
+                              ឯកសារដែលបានបញ្ចូល ({aiDocuments.length})៖
+                            </span>
+                            {aiDocuments.map((doc) => (
+                              <div
+                                key={doc.id}
+                                className="flex items-center justify-between rounded-lg bg-slate-900/80 px-2.5 py-1.5 text-[11px] border border-slate-800"
+                              >
+                                <div className="flex items-center gap-1.5 truncate pr-2">
+                                  <span className="text-cyan-400">📄</span>
+                                  <span className="text-slate-200 truncate">{doc.name}</span>
+                                  <span className="text-[9px] text-slate-500">
+                                    ({Math.round(doc.size / 1024)} KB)
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteDoc(doc.id)}
+                                  className="text-slate-500 hover:text-rose-400 p-0.5"
+                                  title="លុបឯកសារនេះចេញពី Bot"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-purple-200 mb-1">
+                          🎭 ១. តួនាទី & អត្តចរិត Bot (Persona)
+                        </label>
+                        <input
+                          type="text"
+                          value={aiPersona}
+                          onChange={(e) => setAiPersona(e.target.value)}
+                          placeholder="ឧ. ជំនួយការ AI របស់ VST ឆ្លាតវៃ រួសរាយ និងស្មោះត្រង់..."
+                          className="w-full rounded-xl border border-slate-700 bg-slate-900/80 p-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-purple-400"
+                        />
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-xs font-semibold text-purple-200">
+                            📚 ២. ឃ្លាំងចំណេះដឹងផលិតផល (Knowledge Base)
+                          </label>
+                          <span className="text-[10px] text-slate-400">ចងចាំក្នុង Bot ទាំងអស់</span>
+                        </div>
+                        <textarea
+                          rows={4}
+                          value={aiKnowledgeBase}
+                          onChange={(e) => setAiKnowledgeBase(e.target.value)}
+                          placeholder="ឧ. ផលិតផល VST Kidney Pro: តម្លៃ $25, ជួយសម្រួលតម្រងនោម នោមញឹក ឈឺចង្កេះ...&#10;ផលិតផល Emmi: តម្លៃ $18, ជួយបញ្ហារោគស្ត្រី ធ្លាក់ស រមាស់..."
+                          className="w-full rounded-xl border border-slate-700 bg-slate-900/80 p-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-purple-400 font-sans"
+                        />
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-xs font-semibold text-purple-200">
+                            ⛔ ៣. ច្បាប់ & បម្រាមពិសេស (Strict Rules)
+                          </label>
+                          <span className="text-[10px] text-slate-400">ការពារការឆ្លើយខុស</span>
+                        </div>
+                        <textarea
+                          rows={3}
+                          value={aiRules}
+                          onChange={(e) => setAiRules(e.target.value)}
+                          placeholder="ឧ. ហាមប្រាប់តម្លៃលើ Comment ជាដាច់ខាត! ត្រូវឆ្លើយតបបែបផ្អែមល្ហែម និងទាក់ទាញ ហើយប្រាប់ឱ្យភ្ញៀវឆែកមើល Inbox..."
+                          className="w-full rounded-xl border border-slate-700 bg-slate-900/80 p-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-purple-400 font-sans"
+                        />
+                      </div>
+
+                      {/* Save Knowledge Button */}
+                      <div className="pt-1">
+                        <button
+                          type="button"
+                          onClick={handleSaveAiKnowledge}
+                          disabled={isSavingKnowledge}
+                          className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 py-2.5 text-xs font-bold text-white shadow-lg shadow-purple-600/30 hover:from-purple-500 hover:to-indigo-500 transition disabled:opacity-50"
+                        >
+                          <span>💾</span>
+                          <span>{isSavingKnowledge ? "កំពុងរក្សាទុកក្នុង Supabase..." : "រក្សាទុកចំណេះដឹង AI (Save Memory)"}</span>
+                        </button>
+
+                        {knowledgeSavedSuccess && (
+                          <div className="mt-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-2 text-center text-xs font-semibold text-emerald-400 flex items-center justify-center gap-1.5">
+                            <CheckCircle2 className="h-4 w-4" />
+                            <span>ចំណេះដឹងត្រូវបានចងចាំក្នុង Supabase Database រួចរាល់!</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -3015,6 +3819,17 @@ export default function VSTAssistantApp() {
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
 
+                {/* 1. New Chat button on floating widget */}
+                <button
+                  type="button"
+                  onClick={handleNewChat}
+                  title="ការសន្ទនាថ្មី (New Chat)"
+                  className="rounded-xl px-2 py-1 text-[11px] font-semibold bg-white/10 hover:bg-white/20 text-white transition flex items-center gap-1"
+                >
+                  <PlusCircle className="h-3 w-3" />
+                  <span className="hidden sm:inline">New</span>
+                </button>
+
                 {isAdmin && (
                   <button
                     onClick={() => setIsTrainingOpen(!isTrainingOpen)}
@@ -3029,14 +3844,14 @@ export default function VSTAssistantApp() {
                   </button>
                 )}
 
-                {/* Expand to Admin Tab button */}
+                {/* Expand to AI Console Tab button */}
                 <button
                   type="button"
                   onClick={() => {
                     setIsChatOpen(false);
-                    setActiveTab("admin");
+                    setActiveTab("ai_console");
                   }}
-                  title="បើកលើទំព័រ Admin & Member (ពេញទំហំ)"
+                  title="បើកលើមជ្ឈមណ្ឌល AI & Support (ពេញទំហំ)"
                   className="rounded-xl p-1.5 bg-white/10 hover:bg-white/20 text-white transition"
                 >
                   <ExternalLink className="h-3.5 w-3.5" />

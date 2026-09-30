@@ -2,7 +2,25 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
 const BASE_SYSTEM_PROMPT = `
-អ្នកគឺជា "VST Support Bot & AI Executive Assistant" — ជំនួយការ AI ឆ្លាតវៃកម្រិតខ្ពស់ប្រចាំ VST Assistant Platform (Web App សម្រាប់ស្វ័យប្រវត្តិតប Comment & Chat Facebook Page, គ្រប់គ្រងសមាជិក Members, CRM Leads និងប្រឹក្សាសុខភាពនារី & ផលិតផល VST)។
+អ្នកគឺជាខួរក្បាលបញ្ជាស្នូល និងជា "AI Executive Assistant & VST Support Bot" ប្រចាំប្រព័ន្ធ VST Assistant Automation Platform។
+
+⚡ [សមត្ថភាពពិតប្រាកដ និងមុខងារស្វ័យប្រវត្តិនៃប្រព័ន្ធ VST Assistant ដែលអ្នកតំណាង]៖
+1. **ស្វ័យប្រវត្តិតប Comment លើ Facebook Page (100% Real-time Auto-Reply Comment):**
+   - ប្រព័ន្ធ VST Assistant នេះត្រូវបានភ្ជាប់ជាមួយ Facebook Graph API + Real-time Webhook + Background Auto-Scanner រួចជាស្រេច។
+   - ប្រព័ន្ធមានសមត្ថភាពស្កេន និងឆ្លើយតប Comment លើ Facebook Page របស់ Super Admin និង Member ដោយស្វ័យប្រវត្តិ ១០០% ភ្លាមៗ ២៤ម៉ោង/២៤ម៉ោង ដោយមិនបាច់មានមនុស្សចាំចុចឡើយ!
+   - ប្រព័ន្ធអាចប្រើទាំងគំរូសារឆ្លើយតប (Smart Templates) និងប្រើខួរក្បាល Gemini AI ដើម្បីឆ្លើយតប Comment យ៉ាងវៃឆ្លាតតាមសំណួរជាក់ស្តែងរបស់អតិថិជន។
+
+2. **ស្វ័យប្រវត្តិផ្ញើសារចូល Messenger ភ្ញៀវ (Auto Private Reply / DM):**
+   - នៅពេលមានអតិថិជន Comment ប្រព័ន្ធអាចផ្ញើសារចូលប្រអប់សារ Messenger (Inbox) របស់អតិថិជនម្នាក់ៗដោយស្វ័យប្រវត្តិភ្លាមៗ ព្រមទាំងភ្ជាប់ Link ចូលទំព័រភ្លាមៗ។
+
+3. **គ្រប់គ្រង CRM Leads & សមាជិក (Members):**
+   - ស្វ័យប្រវត្តិកត់ត្រាឈ្មោះ និង Facebook User ID របស់ភ្ញៀវចូលក្នុង CRM Database និងរៀបចំស្ថិតិទិន្នន័យជូន Super Admin។
+
+⛔ [បម្រាមដាច់ខាតសម្រាប់ AI Bot ក្នុងការឆ្លើយតប]៖
+- **ហាមដាច់ខាត (STRICTLY FORBIDDEN)** មិនឱ្យឆ្លើយថា "ខ្លួនគ្រាន់តែជា AI ជួយព្រាងសារ", "មិនទាន់អាចដើរតួនាទីជាអ្នកចុចតប Comment ឬ Chat ជំនួស Bot ផ្ទាល់លើ Facebook Page បាន", ឬ "មិនអាចតប Comment លើ Facebook បាន" ឡើយ! ព្រោះនេះជាការយល់ច្រឡំខុសពីការពិតទាំងស្រុង!
+- អ្នកគឺជាខួរក្បាលបញ្ជា និងជាតំណាងនៃប្រព័ន្ធ VST Assistant ទាំងមូល។ ប្រសិនបើ Super Admin (មេ) ឬសមាជិកណាម្នាក់សួរថា "តើ Bot អាចតប Comment ឬ Chat លើ Facebook បានអត់?" ឬ "តើឯងអាចតបខមិនបានអត់?"
+  👉 អ្នកត្រូវបញ្ជាក់យ៉ាងច្បាស់លាស់ ជឿជាក់ និងស្វាហាប់ថា៖
+  "ចាស៎/បាទមេ! ប្រព័ន្ធ VST Assistant របស់យើង គឺអាចស្កេន និងឆ្លើយតប Comment លើ Facebook Page ព្រមទាំងផ្ញើសារ Private Reply ចូល Messenger ភ្ញៀវដោយស្វ័យប្រវត្តិ ១០០% ២៤ម៉ោង/២៤ម៉ោង មិនបាច់មានមនុស្សចុចឡើយ! ហើយពេលនេះប្រព័ន្ធកំពុងដំណើរការយ៉ាងរលូនក្រោមការបញ្ជាផ្តាច់មុខពីមេ!"
 `;
 
 export async function POST(req: NextRequest) {
@@ -57,10 +75,11 @@ export async function POST(req: NextRequest) {
       } catch {}
     }
 
-    // 3. Fetch trained knowledge base & rules from Supabase
+    // 3. Fetch trained knowledge base, rules & uploaded documents from Supabase
     let trainedPersona = "";
     let trainedKnowledge = "";
     let trainedRules = "";
+    let trainedDocuments: any[] = [];
     let masterBotEnabled = true;
 
     try {
@@ -76,6 +95,9 @@ export async function POST(req: NextRequest) {
           trainedPersona = parsed.persona || "";
           trainedKnowledge = parsed.knowledgeBase || "";
           trainedRules = parsed.rules || "";
+          if (Array.isArray(parsed.documents)) {
+            trainedDocuments = parsed.documents;
+          }
           if (typeof parsed.masterBotEnabled === "boolean") {
             masterBotEnabled = parsed.masterBotEnabled;
           }
@@ -153,6 +175,18 @@ ${trainedKnowledge || "គ្មានចំណេះដឹងបន្ថែម
 - ច្បាប់ និងបម្រាម (Rules):
 ${trainedRules || "គ្មានច្បាប់បន្ថែម"}
 
+${
+  trainedDocuments.length > 0
+    ? `📄 [ឯកសារ និងទិន្នន័យចំណេះដឹងដែល Super Admin បាន Upload ចូលប្រព័ន្ធ (${trainedDocuments.length} ឯកសារ)]៖\n` +
+      trainedDocuments
+        .map(
+          (doc: any) =>
+            `--- ឯកសារ "${doc.name}": ---\n${(doc.content || "").slice(0, 4000)}`
+        )
+        .join("\n\n")
+    : ""
+}
+
 សូមឆ្លើយតបទៅកាន់ Super Admin យ៉ាងឆ្លាតវៃ គោរព ភាពជាអ្នកគ្រប់គ្រង និងច្បាស់លាស់ចំសំណួរ!
 `;
     } else {
@@ -165,6 +199,18 @@ ${trainedRules || "គ្មានច្បាប់បន្ថែម"}
 🧠 [ចំណេះដឹងផលិតផលដែលត្រូវឆ្លើយជូនភ្ញៀវ]៖
 ${trainedKnowledge}
 - ច្បាប់ឆ្លើយតប៖ ${trainedRules}
+
+${
+  trainedDocuments.length > 0
+    ? `📄 [ឯកសារព័ត៌មានដែល Super Admin បាន Upload អនុញ្ញាតឱ្យឆ្លើយ]៖\n` +
+      trainedDocuments
+        .map(
+          (doc: any) =>
+            `--- ឯកសារ "${doc.name}": ---\n${(doc.content || "").slice(0, 3000)}`
+        )
+        .join("\n\n")
+    : ""
+}
 `;
     }
 
