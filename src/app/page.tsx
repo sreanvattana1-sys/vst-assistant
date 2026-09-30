@@ -34,6 +34,8 @@ import {
   FileUp,
   PlusCircle,
   UploadCloud,
+  Paperclip,
+  Brain,
 } from "lucide-react";
 import { translations, Language } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase";
@@ -162,9 +164,9 @@ export default function VSTAssistantApp() {
     fetchPages();
   }, []);
 
-  // Guard: if member / non-admin user is on admin tab, redirect to dashboard
+  // Guard: if member / non-admin user is on admin or ai_training tab, redirect to dashboard
   useEffect(() => {
-    if (!isAdmin && activeTab === "admin") {
+    if (!isAdmin && (activeTab === "admin" || activeTab === "ai_training")) {
       setActiveTab("dashboard");
     }
   }, [isAdmin, activeTab]);
@@ -616,6 +618,7 @@ export default function VSTAssistantApp() {
     }>
   >([]);
   const [isUploadingDoc, setIsUploadingDoc] = useState(false);
+  const [isDocsOpen, setIsDocsOpen] = useState(false);
 
   // Manual Facebook Page Connect Modal state
   const [isConnectFbModalOpen, setIsConnectFbModalOpen] = useState(false);
@@ -807,7 +810,17 @@ export default function VSTAssistantApp() {
           }),
         });
 
-        alert(`ឯកសារ "${file.name}" ត្រូវបានបញ្ចូលក្នុងចំណេះដឹង Bot ដោយជោគជ័យ!`);
+        const uploadMsg = {
+          from: "bot" as const,
+          text: `📁 បានទទួល និងចងចាំឯកសារ "${file.name}" (${Math.round(file.size / 1024)} KB) ទៅក្នុងចំណេះដឹង Bot រួចរាល់ហើយចាស៎/បាទ! 🙏✨\n\nឥឡូវនេះបងអាចសួរ ឬបញ្ជា Bot ដោយផ្អែកលើខ្លឹមសារឯកសារនេះបានភ្លាមៗ។`,
+        };
+        setChatMessages((prev) => {
+          const updated = [...prev, uploadMsg];
+          try {
+            localStorage.setItem("vst_chat_history", JSON.stringify(updated.slice(-50)));
+          } catch {}
+          return updated;
+        });
       } catch (err) {
         console.error("File upload error:", err);
         alert("បរាជ័យក្នុងការ Upload ឯកសារ");
@@ -1282,134 +1295,103 @@ export default function VSTAssistantApp() {
     }
 
     return (
-      <div className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-[#030914] via-[#061730] to-[#0c2f60] p-4 overflow-hidden">
+      <div className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-[#030914] via-[#051329] to-[#0a1f3d] p-4 overflow-hidden">
         {/* Language switcher on top-right */}
         <div className="absolute top-6 right-6 z-20">
           <LangSwitcher />
         </div>
 
-        {/* Glowing background circles */}
-        <div className="absolute -top-32 -right-32 h-96 w-96 rounded-full bg-cyan-500/10 blur-3xl" />
-        <div className="absolute -bottom-32 -left-32 h-96 w-96 rounded-full bg-blue-600/15 blur-3xl" />
+        {/* Ambient subtle background glow */}
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[500px] w-[500px] rounded-full bg-cyan-500/10 blur-[120px] pointer-events-none" />
+        <div className="absolute bottom-10 right-10 h-72 w-72 rounded-full bg-blue-600/10 blur-[100px] pointer-events-none" />
 
-        <div className="relative w-full max-w-md rounded-3xl border border-white/10 bg-slate-900/70 p-8 shadow-2xl backdrop-blur-2xl">
-          <div className="mb-6 text-center">
-            <div className="relative mx-auto mb-4 h-24 w-24 overflow-hidden rounded-full border-2 border-cyan-400/40 p-1 shadow-lg shadow-cyan-500/20">
+        <div className="relative w-full max-w-[420px] rounded-3xl border border-slate-800/80 bg-slate-900/60 p-8 sm:p-9 shadow-2xl backdrop-blur-2xl">
+          {/* Brand Logo & Header */}
+          <div className="mb-7 text-center">
+            <div className="relative mx-auto mb-3.5 h-20 w-20 overflow-hidden rounded-2xl border border-cyan-400/30 p-1 shadow-lg shadow-cyan-500/10 bg-slate-950/60">
               <Image
                 src="/vst-logo.jpg"
                 alt="VST Assistant Logo"
                 fill
-                className="rounded-full object-cover"
+                className="rounded-xl object-cover"
               />
             </div>
-            <h1 className="text-2xl font-extrabold tracking-tight text-white">
-              {t.login.title}
+            <h1 className="text-xl font-bold tracking-tight text-white">
+              {t.brandName || "VST Assistant"}
             </h1>
-            <p className="mt-1 text-sm text-cyan-200/70">
-              {t.login.subtitle}
+            <p className="mt-1 text-xs text-slate-400">
+              {authMode === "signin"
+                ? (lang === "km" ? "ចូលគណនីដើម្បីគ្រប់គ្រង Page & AI Bot" : "Sign in to manage Pages & AI Bot")
+                : (lang === "km" ? "ចុះឈ្មោះគណនីថ្មីក្នុងប្រព័ន្ធ VST" : "Create your VST Assistant account")}
             </p>
           </div>
 
           {/* Error Alert Display */}
           {loginError && (
-            <div className="mb-4 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-center text-xs font-medium text-rose-300">
+            <div className="mb-5 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-center text-xs font-medium text-rose-300 animate-fade-in">
               ⚠️ {loginError}
             </div>
           )}
 
-          {/* Sign In vs Sign Up Tabs */}
-          <div className="grid grid-cols-2 p-1 rounded-2xl bg-slate-800/80 border border-slate-700/60 mb-5 text-xs font-bold">
+          {/* Quick 1-Click Social Logins (Side-by-Side Clean Grid) */}
+          <div className="grid grid-cols-2 gap-3 mb-5">
+            {/* Google / Gmail Button */}
             <button
               type="button"
-              onClick={() => {
-                setAuthMode("signin");
-                setLoginError("");
-              }}
-              className={`py-2 rounded-xl transition ${
-                authMode === "signin"
-                  ? "bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-md shadow-cyan-500/20"
-                  : "text-slate-400 hover:text-white"
-              }`}
+              onClick={handleGoogleLogin}
+              disabled={isLoggingIn || isSigningUp}
+              className="flex items-center justify-center gap-2 rounded-xl bg-white hover:bg-slate-100 py-2.5 px-3 font-semibold text-slate-800 shadow-sm transition disabled:opacity-50 text-xs border border-slate-200"
+              title="ចូលតាមរយៈ Google (Gmail)"
             >
-              🔑 ចូលគណនី (Sign In)
+              <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24">
+                <path
+                  fill="#4285F4"
+                  d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.36 24 12 24z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 10.04 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.36 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+                />
+              </svg>
+              <span>Gmail</span>
             </button>
+
+            {/* Facebook Button */}
             <button
               type="button"
-              onClick={() => {
-                setAuthMode("signup");
-                setLoginError("");
-              }}
-              className={`py-2 rounded-xl transition ${
-                authMode === "signup"
-                  ? "bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-md shadow-cyan-500/20"
-                  : "text-slate-400 hover:text-white"
-              }`}
+              onClick={handleFacebookLogin}
+              disabled={isFbConnecting}
+              className="flex items-center justify-center gap-2 rounded-xl bg-[#1877F2] hover:bg-[#166fe5] py-2.5 px-3 font-semibold text-white shadow-sm transition disabled:opacity-50 text-xs"
+              title="ចូលតាមរយៈ Facebook"
             >
-              📝 ចុះឈ្មោះ (Sign Up)
-            </button>
-          </div>
-
-          {/* Google (Gmail) One-Click Sign In/Up */}
-          <button
-            type="button"
-            onClick={handleGoogleLogin}
-            disabled={isLoggingIn || isSigningUp}
-            className="flex w-full items-center justify-center gap-3 rounded-xl bg-white hover:bg-slate-100 py-3 px-4 font-semibold text-slate-900 shadow-md transition disabled:opacity-60 mb-3"
-          >
-            <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24">
-              <path
-                fill="#4285F4"
-                d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.36 24 12 24z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 10.04 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.36 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-              />
-            </svg>
-            <span className="text-xs font-bold text-slate-800">
-              {authMode === "signin"
-                ? "ចូលប្រើប្រាស់តាម Google (Gmail)"
-                : "ចុះឈ្មោះដោយប្រើ Google (Gmail)"}
-            </span>
-          </button>
-
-          {/* Facebook Login Button */}
-          <button
-            type="button"
-            onClick={handleFacebookLogin}
-            disabled={isFbConnecting}
-            className="flex w-full items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 py-3 px-4 font-semibold text-white shadow-md shadow-blue-600/30 transition hover:from-blue-500 hover:to-indigo-500 disabled:opacity-60 mb-4 text-xs"
-          >
-            {isFbConnecting ? (
-              <>
+              {isFbConnecting ? (
                 <RefreshCw className="h-4 w-4 animate-spin" />
-                <span>{lang === "km" ? "កំពុងភ្ជាប់ Facebook..." : "Connecting Facebook..."}</span>
-              </>
-            ) : (
-              <>
+              ) : (
                 <svg className="h-4 w-4 fill-current shrink-0" viewBox="0 0 24 24">
                   <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
                 </svg>
-                <span>{t.login.fbLogin}</span>
-              </>
-            )}
-          </button>
+              )}
+              <span>Facebook</span>
+            </button>
+          </div>
 
-          <div className="relative my-4 flex items-center justify-center">
-            <div className="w-full border-t border-slate-700/60" />
-            <span className="absolute bg-[#09152b] px-3 text-xs text-slate-400">
-              {authMode === "signin" ? t.login.orAdmin : "ឬចុះឈ្មោះតាម Email"}
+          {/* Minimalist Divider */}
+          <div className="relative my-5 flex items-center justify-center">
+            <div className="w-full border-t border-slate-800" />
+            <span className="absolute bg-[#0b172a] px-3 text-[11px] text-slate-500 font-medium">
+              {lang === "km" ? "ឬ ប្រើគណនី Email" : "or continue with email"}
             </span>
           </div>
 
+          {/* FORM: Sign In */}
           {authMode === "signin" ? (
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
@@ -1420,60 +1402,74 @@ export default function VSTAssistantApp() {
                   type="text"
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
-                  placeholder={t.login.emailPlaceholder}
+                  placeholder="admin@vst.com"
                   required
-                  className="w-full rounded-xl border border-slate-700/60 bg-slate-800/50 px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition"
+                  className="w-full rounded-xl border border-slate-700/80 bg-slate-950/70 px-4 py-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                  {t.login.passLabel}
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-medium text-slate-300">
+                    {t.login.passLabel}
+                  </label>
+                </div>
                 <div className="relative">
                   <input
                     type={showPassword ? "text" : "password"}
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
-                    placeholder={t.login.passPlaceholder}
+                    placeholder="••••••••"
                     required
-                    className="w-full rounded-xl border border-slate-700/60 bg-slate-800/50 px-4 py-2.5 pr-10 text-sm text-white placeholder-slate-500 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition"
+                    className="w-full rounded-xl border border-slate-700/80 bg-slate-950/70 px-4 py-2.5 pr-10 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-1"
                   >
                     {showPassword ? (
-                      <EyeOff className="h-4 w-4" />
+                      <EyeOff className="h-3.5 w-3.5" />
                     ) : (
-                      <Eye className="h-4 w-4" />
+                      <Eye className="h-3.5 w-3.5" />
                     )}
                   </button>
                 </div>
               </div>
 
-              {/* Remember Me Checkbox */}
-              <div className="flex items-center justify-between text-xs">
-                <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white select-none">
+              {/* Remember Me & Quick Super Admin Fill */}
+              <div className="flex items-center justify-between text-xs pt-0.5">
+                <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 select-none">
                   <input
                     type="checkbox"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    className="rounded border-slate-700 bg-slate-800 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer h-4 w-4"
+                    className="rounded border-slate-700 bg-slate-800 text-cyan-500 focus:ring-0 cursor-pointer h-3.5 w-3.5"
                   />
-                  <span>{t.login.rememberMe}</span>
+                  <span className="text-[11px]">{t.login.rememberMe}</span>
                 </label>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoginEmail("admin@vst.com");
+                    setLoginPassword("admin123");
+                  }}
+                  className="text-[11px] text-cyan-400/90 hover:text-cyan-300 hover:underline transition"
+                  title="បំពេញគណនី Super Admin ដោយស្វ័យប្រវត្ត"
+                >
+                  ⚡ Admin Demo
+                </button>
               </div>
 
               <button
                 type="submit"
                 disabled={isLoggingIn}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 py-3 px-4 font-semibold text-white shadow-lg shadow-cyan-500/20 transition hover:from-blue-500 hover:to-cyan-500 disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-cyan-600 to-teal-500 py-2.5 px-4 font-bold text-white shadow-lg shadow-cyan-500/20 transition hover:opacity-95 disabled:opacity-50 text-xs mt-2"
               >
                 {isLoggingIn ? (
                   <>
-                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
                     <span>{t.login.signingIn}</span>
                   </>
                 ) : (
@@ -1482,10 +1478,11 @@ export default function VSTAssistantApp() {
               </button>
             </form>
           ) : (
+            /* FORM: Sign Up */
             <form onSubmit={handleSignup} className="space-y-3.5">
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">
-                  ឈ្មោះពេញ (Full Name)
+                  {lang === "km" ? "ឈ្មោះពេញ (Full Name)" : "Full Name"}
                 </label>
                 <input
                   type="text"
@@ -1493,7 +1490,7 @@ export default function VSTAssistantApp() {
                   onChange={(e) => setSignupName(e.target.value)}
                   placeholder="ឧ. សុខ ចិន្តា"
                   required
-                  className="w-full rounded-xl border border-slate-700/60 bg-slate-800/50 px-4 py-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-500 transition"
+                  className="w-full rounded-xl border border-slate-700/80 bg-slate-950/70 px-4 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-400 transition"
                 />
               </div>
 
@@ -1507,13 +1504,13 @@ export default function VSTAssistantApp() {
                   onChange={(e) => setSignupEmail(e.target.value)}
                   placeholder="yourname@gmail.com"
                   required
-                  className="w-full rounded-xl border border-slate-700/60 bg-slate-800/50 px-4 py-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-500 transition"
+                  className="w-full rounded-xl border border-slate-700/80 bg-slate-950/70 px-4 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-400 transition"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">
-                  លេខសម្ងាត់ (Password)
+                  {lang === "km" ? "លេខសម្ងាត់ (Password)" : "Password"}
                 </label>
                 <input
                   type="password"
@@ -1521,13 +1518,13 @@ export default function VSTAssistantApp() {
                   onChange={(e) => setSignupPassword(e.target.value)}
                   placeholder="យ៉ាងហោចណាស់ ៦ ខ្ទង់"
                   required
-                  className="w-full rounded-xl border border-slate-700/60 bg-slate-800/50 px-4 py-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-500 transition"
+                  className="w-full rounded-xl border border-slate-700/80 bg-slate-950/70 px-4 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-400 transition"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">
-                  បញ្ជាក់លេខសម្ងាត់ (Confirm Password)
+                  {lang === "km" ? "បញ្ជាក់លេខសម្ងាត់ (Confirm Password)" : "Confirm Password"}
                 </label>
                 <input
                   type="password"
@@ -1535,29 +1532,58 @@ export default function VSTAssistantApp() {
                   onChange={(e) => setSignupConfirmPassword(e.target.value)}
                   placeholder="វាយលេខសម្ងាត់ម្តងទៀត"
                   required
-                  className="w-full rounded-xl border border-slate-700/60 bg-slate-800/50 px-4 py-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-500 transition"
+                  className="w-full rounded-xl border border-slate-700/80 bg-slate-950/70 px-4 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-400 transition"
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={isSigningUp}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 py-3 px-4 font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:from-emerald-500 hover:to-teal-400 disabled:opacity-50 text-xs mt-2"
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 py-2.5 px-4 font-bold text-white shadow-lg shadow-emerald-500/20 transition hover:opacity-95 disabled:opacity-50 text-xs mt-1"
               >
                 {isSigningUp ? (
                   <>
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    <span>កំពុងចុះឈ្មោះ...</span>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    <span>{lang === "km" ? "កំពុងចុះឈ្មោះ..." : "Registering..."}</span>
                   </>
                 ) : (
-                  <span>ចុះឈ្មោះជាសមាជិក (Sign Up)</span>
+                  <span>{lang === "km" ? "ចុះឈ្មោះគណនីថ្មី (Sign Up)" : "Create Account"}</span>
                 )}
               </button>
             </form>
           )}
 
-          <div className="mt-6 text-center text-xs text-slate-500">
-            {t.login.copyright}
+          {/* Clean Switcher Link at Bottom */}
+          <div className="mt-6 pt-4 border-t border-slate-800/80 text-center text-xs text-slate-400">
+            {authMode === "signin" ? (
+              <span>
+                {lang === "km" ? "មិនទាន់មានគណនីមែនទេ? " : "Don't have an account? "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode("signup");
+                    setLoginError("");
+                  }}
+                  className="text-cyan-400 font-semibold hover:text-cyan-300 hover:underline transition ml-1"
+                >
+                  {lang === "km" ? "ចុះឈ្មោះនៅទីនេះ (Sign Up)" : "Sign up"}
+                </button>
+              </span>
+            ) : (
+              <span>
+                {lang === "km" ? "មានគណនីរួចហើយមែនទេ? " : "Already have an account? "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode("signin");
+                    setLoginError("");
+                  }}
+                  className="text-cyan-400 font-semibold hover:text-cyan-300 hover:underline transition ml-1"
+                >
+                  {lang === "km" ? "ចូលគណនី (Sign In)" : "Sign in"}
+                </button>
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -1634,7 +1660,8 @@ export default function VSTAssistantApp() {
             ...(isAdmin
               ? [
                   { id: "admin", label: t.nav.admin, icon: ShieldCheck },
-                  { id: "ai_console", label: lang === "km" ? "មជ្ឈមណ្ឌល AI & Support" : "AI & Support Console", icon: Bot, badge: "AI" }
+                  { id: "ai_console", label: lang === "km" ? "ជំនួយការ AI & Support" : "AI & Support Assistant", icon: Bot, badge: "AI" },
+                  { id: "ai_training", label: lang === "km" ? "បង្រៀន & ចំណេះដឹង AI" : "AI Training & Memory", icon: Brain, badge: "Hub" }
                 ]
               : [
                   { id: "ai_console", label: lang === "km" ? "ជំនួយការ AI Support" : "AI Support Assistant", icon: Bot, badge: "AI" }
@@ -3227,9 +3254,9 @@ export default function VSTAssistantApp() {
             </div>
           )}
 
-          {/* TAB: VST SUPPORT CHAT & AI TRAINING CONSOLE (FULL PAGE STANDALONE) */}
+          {/* TAB: VST SUPPORT CHAT (FULL WIDTH) */}
           {activeTab === "ai_console" && (
-            <div className="space-y-6 max-w-6xl">
+            <div className="space-y-6 max-w-5xl mx-auto">
               {/* Header Banner */}
               <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900/90 via-[#071328] to-[#030915] p-6 shadow-2xl backdrop-blur-xl">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-800/80">
@@ -3240,7 +3267,7 @@ export default function VSTAssistantApp() {
                     <div>
                       <div className="flex flex-wrap items-center gap-2.5">
                         <h3 className="text-lg font-bold text-white tracking-tight">
-                          💬 មជ្ឈមណ្ឌល VST Support Chat & AI Training Console
+                          💬 {lang === "km" ? "ជំនួយការ VST Support Chat" : "VST Support Chat Assistant"}
                         </h3>
                         <span className="rounded-full bg-cyan-500/10 px-2.5 py-0.5 text-[10px] font-bold text-cyan-400 border border-cyan-500/30">
                           {isAdmin ? "Super Admin Full Access" : "Support Assistant"}
@@ -3248,15 +3275,15 @@ export default function VSTAssistantApp() {
                       </div>
                       <p className="text-xs text-slate-400 mt-1">
                         {lang === "km"
-                          ? "ផ្ទាំងជំនួយការ AI ពេញលេញ — រក្សាប្រវត្តិសន្ទនា (Chat Sessions) បង្រៀន AI ចងចាំច្បាប់ & Upload ឯកសារចំណេះដឹង"
-                          : "Full AI Support & Training Console — Manage chat history sessions, train AI memory & upload knowledge docs"}
+                          ? "ផ្ទាំងជំនួយការ AI ពេញលេញ — សួរបញ្ជា Bot រក្សាប្រវត្តិសន្ទនា (Chat Sessions) និង Upload ឯកសារក្នុងឆាតភ្លាមៗ"
+                          : "Full AI Support Chat — Ask questions, manage chat sessions, and upload reference documents directly in chat"}
                       </p>
                     </div>
                   </div>
 
                   {/* Header Actions */}
                   <div className="flex flex-wrap items-center gap-2.5">
-                    {/* 1. New Chat Button */}
+                    {/* New Chat Button */}
                     <button
                       type="button"
                       onClick={handleNewChat}
@@ -3264,13 +3291,16 @@ export default function VSTAssistantApp() {
                       title="ចាប់ផ្តើមការសន្ទនាថ្មី (New Chat)"
                     >
                       <PlusCircle className="h-4 w-4" />
-                      <span>{lang === "km" ? "➕ New Chat (ការសន្ទនាថ្មី)" : "➕ New Chat"}</span>
+                      <span>{lang === "km" ? "➕ New Chat" : "➕ New Chat"}</span>
                     </button>
 
-                    {/* 1. Sessions History Toggle */}
+                    {/* Sessions History Toggle */}
                     <button
                       type="button"
-                      onClick={() => setIsSessionsOpen(!isSessionsOpen)}
+                      onClick={() => {
+                        setIsSessionsOpen(!isSessionsOpen);
+                        if (isDocsOpen) setIsDocsOpen(false);
+                      }}
                       className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-medium transition ${
                         isSessionsOpen
                           ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40"
@@ -3282,6 +3312,26 @@ export default function VSTAssistantApp() {
                       <span>{lang === "km" ? `ប្រវត្តិ (${chatSessions.length})` : `History (${chatSessions.length})`}</span>
                     </button>
 
+                    {/* Attached Knowledge Documents Toggle */}
+                    {aiDocuments.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsDocsOpen(!isDocsOpen);
+                          if (isSessionsOpen) setIsSessionsOpen(false);
+                        }}
+                        className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-medium transition ${
+                          isDocsOpen
+                            ? "bg-purple-500/20 text-purple-300 border-purple-500/40"
+                            : "bg-slate-800/80 text-slate-300 border-slate-700 hover:bg-slate-700"
+                        }`}
+                        title="មើលឯកសារដែល Bot បានចងចាំ"
+                      >
+                        <Paperclip className="h-4 w-4 text-purple-400" />
+                        <span>{lang === "km" ? `ឯកសារ (${aiDocuments.length})` : `Docs (${aiDocuments.length})`}</span>
+                      </button>
+                    )}
+
                     {/* Master Bot Status */}
                     <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800/60 border border-slate-700/60 text-xs">
                       <span className={`h-2.5 w-2.5 rounded-full ${masterBotEnabled ? "bg-emerald-400 animate-pulse" : "bg-rose-400"}`} />
@@ -3292,18 +3342,17 @@ export default function VSTAssistantApp() {
                   </div>
                 </div>
 
-                {/* 2-Column Grid: Left (Chat + Sessions) + Right (Training & Document Upload) */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-5">
-                  {/* Left Column: Chat Conversation Stream & Sessions Drawer */}
-                  <div className={`${isAdmin ? "lg:col-span-7" : "lg:col-span-12"} flex flex-col h-[600px] rounded-2xl border border-slate-800/80 bg-slate-950/70 overflow-hidden relative`}>
+                {/* Main Chat Box (Full Width) */}
+                <div className="pt-5">
+                  <div className="flex flex-col h-[620px] rounded-2xl border border-slate-800/80 bg-slate-950/70 overflow-hidden relative">
                     
-                    {/* Collapsible Chat Sessions Sidebar/Drawer */}
+                    {/* Collapsible Chat Sessions Drawer */}
                     {isSessionsOpen && (
-                      <div className="absolute inset-y-0 left-0 z-20 w-72 bg-slate-900/95 border-r border-slate-800 p-4 flex flex-col shadow-2xl backdrop-blur-md">
+                      <div className="absolute inset-y-0 left-0 z-20 w-80 bg-slate-900/95 border-r border-slate-800 p-4 flex flex-col shadow-2xl backdrop-blur-md">
                         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                           <div className="flex items-center gap-2 text-xs font-bold text-white">
                             <History className="h-4 w-4 text-cyan-400" />
-                            <span>ប្រវត្តិសន្ទនា (Chat Sessions)</span>
+                            <span>{lang === "km" ? "ប្រវត្តិសន្ទនា (Chat Sessions)" : "Chat Sessions"}</span>
                           </div>
                           <button
                             onClick={() => setIsSessionsOpen(false)}
@@ -3347,9 +3396,76 @@ export default function VSTAssistantApp() {
                             className="w-full flex items-center justify-center gap-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 py-2 text-xs font-bold text-white shadow-md transition"
                           >
                             <PlusCircle className="h-3.5 w-3.5" />
-                            <span>បង្កើត Chat ថ្មី</span>
+                            <span>{lang === "km" ? "បង្កើត Chat ថ្មី" : "New Chat"}</span>
                           </button>
                         </div>
+                      </div>
+                    )}
+
+                    {/* Collapsible Documents Knowledge Drawer */}
+                    {isDocsOpen && (
+                      <div className="absolute inset-y-0 right-0 z-20 w-80 bg-slate-900/95 border-l border-slate-800 p-4 flex flex-col shadow-2xl backdrop-blur-md">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                          <div className="flex items-center gap-2 text-xs font-bold text-white">
+                            <Paperclip className="h-4 w-4 text-purple-400" />
+                            <span>{lang === "km" ? "ឯកសារដែល Bot បានចងចាំ" : "Bot Knowledge Docs"}</span>
+                          </div>
+                          <button
+                            onClick={() => setIsDocsOpen(false)}
+                            className="text-slate-400 hover:text-white text-xs"
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto py-2 space-y-2">
+                          {aiDocuments.length === 0 ? (
+                            <div className="py-8 text-center text-xs text-slate-500">
+                              មិនទាន់មានឯកសារនៅឡើយ
+                            </div>
+                          ) : (
+                            aiDocuments.map((doc) => (
+                              <div
+                                key={doc.id}
+                                className="flex items-center justify-between rounded-xl bg-slate-800/80 p-2.5 text-xs border border-slate-700/60"
+                              >
+                                <div className="flex-1 min-w-0 pr-2">
+                                  <div className="font-semibold text-white truncate flex items-center gap-1.5">
+                                    <span>📄</span>
+                                    <span className="truncate">{doc.name}</span>
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 mt-0.5">
+                                    {Math.round(doc.size / 1024)} KB • {doc.uploadedAt}
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteDoc(doc.id)}
+                                  className="text-slate-500 hover:text-rose-400 p-1"
+                                  title="លុបឯកសារនេះ"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+
+                        {isAdmin && (
+                          <div className="pt-3 border-t border-slate-800">
+                            <label className="w-full flex items-center justify-center gap-2 rounded-xl bg-purple-600 hover:bg-purple-500 py-2 text-xs font-bold text-white cursor-pointer shadow-md transition">
+                              <Paperclip className="h-3.5 w-3.5" />
+                              <span>{lang === "km" ? "Upload ឯកសារបន្ថែម" : "Upload More Docs"}</span>
+                              <input
+                                type="file"
+                                accept=".txt,.csv,.json,.pdf,.doc,.docx"
+                                onChange={handleFileUpload}
+                                disabled={isUploadingDoc}
+                                className="hidden"
+                              />
+                            </label>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -3401,8 +3517,33 @@ export default function VSTAssistantApp() {
                       <div ref={adminChatBottomRef} />
                     </div>
 
-                    {/* Chat Input Bar */}
+                    {/* Uploading Status Banner */}
+                    {isUploadingDoc && (
+                      <div className="px-4 py-2 bg-cyan-950/60 border-t border-cyan-500/30 text-xs text-cyan-300 flex items-center gap-2 animate-pulse">
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin text-cyan-400" />
+                        <span>{lang === "km" ? "កំពុងអាន និងចងចាំឯកសារចូលទៅក្នុង Bot..." : "Reading and learning document into Bot..."}</span>
+                      </div>
+                    )}
+
+                    {/* Chat Input Bar with Direct File Upload */}
                     <div className="border-t border-slate-800 p-3 bg-slate-900/90 flex items-center gap-2">
+                      {/* Direct Upload button in Chat */}
+                      {isAdmin && (
+                        <label
+                          className="cursor-pointer p-2.5 rounded-xl border border-slate-700/80 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-cyan-400 transition flex items-center justify-center shrink-0 shadow-sm"
+                          title="Upload ឯកសារចំណេះដឹង (PDF, DOCX, TXT, CSV) ឱ្យ Bot ចងចាំ"
+                        >
+                          <Paperclip className="h-4 w-4" />
+                          <input
+                            type="file"
+                            accept=".txt,.csv,.json,.pdf,.doc,.docx"
+                            onChange={handleFileUpload}
+                            disabled={isUploadingDoc}
+                            className="hidden"
+                          />
+                        </label>
+                      )}
+
                       <input
                         type="text"
                         value={chatInput}
@@ -3410,11 +3551,12 @@ export default function VSTAssistantApp() {
                         onKeyDown={(e) => e.key === "Enter" && handleSendChat()}
                         placeholder={
                           isAdmin
-                            ? "សួរបញ្ជា Bot គ្រប់រឿងក្នុង Web App (ឧ. តើ Member ណាខ្លះកំពុងដំណើរការ? របាយការណ៍ Leads...)"
+                            ? "សួរបញ្ជា Bot គ្រប់រឿងក្នុង Web App ឬចុច 📎 ខាងឆ្វេងដើម្បី Upload ឯកសារ..."
                             : "វាយសំណួររបស់អ្នកនៅទីនេះ..."
                         }
                         className="flex-1 rounded-xl border border-slate-700 bg-slate-800/80 px-4 py-2.5 text-xs text-white placeholder-slate-400 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition"
                       />
+
                       <button
                         type="button"
                         onClick={() => handleSendChat()}
@@ -3426,147 +3568,157 @@ export default function VSTAssistantApp() {
                       </button>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
 
-                  {/* Right Column: AI Training & Document Upload (Super Admin Only) */}
-                  {isAdmin && (
-                    <div className="lg:col-span-5 flex flex-col h-[600px] rounded-2xl border border-purple-500/30 bg-purple-950/10 p-4 overflow-y-auto space-y-3.5 text-xs">
-                      <div className="flex items-center justify-between pb-2 border-b border-purple-500/20">
-                        <div className="flex items-center gap-2">
-                          <Sparkles className="h-4 w-4 text-purple-400" />
-                          <h4 className="font-bold text-white text-sm">
-                            🧠 បង្រៀន & កំណត់ចំណេះដឹង AI (Memory Hub)
-                          </h4>
-                        </div>
-                        <span className="text-[10px] text-purple-300 bg-purple-500/20 px-2 py-0.5 rounded-full border border-purple-500/30 font-semibold">
+          {/* TAB: AI TRAINING & MEMORY HUB (STANDALONE FULL PAGE FOR SUPER ADMIN) */}
+          {activeTab === "ai_training" && (
+            <div className="space-y-6 max-w-5xl mx-auto">
+              {/* Header Banner */}
+              <div className="rounded-3xl border border-purple-500/30 bg-gradient-to-br from-slate-900/90 via-[#130728] to-[#0a0318] p-6 shadow-2xl backdrop-blur-xl">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-purple-500/20">
+                  <div className="flex items-center gap-3.5">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-tr from-purple-500 via-indigo-600 to-pink-500 text-white shadow-lg shadow-purple-500/20">
+                      <Brain className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <h3 className="text-lg font-bold text-white tracking-tight">
+                          🧠 {lang === "km" ? "មជ្ឈមណ្ឌលបង្រៀន & កំណត់ចំណេះដឹង AI (Memory Hub)" : "AI Training & Knowledge Hub"}
+                        </h3>
+                        <span className="rounded-full bg-purple-500/20 px-2.5 py-0.5 text-[10px] font-bold text-purple-300 border border-purple-500/40">
                           Supabase Synced
                         </span>
                       </div>
-
-                      {/* 2. Upload Document into Bot Memory */}
-                      <div className="rounded-xl border border-cyan-500/30 bg-cyan-950/20 p-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <label className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
-                            <UploadCloud className="h-4 w-4 text-cyan-400" />
-                            <span>📁 Upload ឯកសារចំណេះដឹង Bot (Super Admin)</span>
-                          </label>
-                          <span className="text-[10px] text-cyan-400/80">PDF, TXT, CSV, DOC</span>
-                        </div>
-                        <p className="text-[11px] text-slate-400 mb-2 leading-relaxed">
-                          បញ្ចូលឯកសារចំណេះដឹង (តម្លៃ, ច្បាប់, សេចក្ដីណែនាំ) ដើម្បីឱ្យ AI ចងចាំឆ្លើយតបអតិថិជន
-                        </p>
-
-                        <label className="flex items-center justify-center gap-2 w-full p-2.5 border-2 border-dashed border-cyan-500/40 hover:border-cyan-400 rounded-xl cursor-pointer bg-slate-900/60 hover:bg-slate-900 transition">
-                          <FileUp className="h-4 w-4 text-cyan-400" />
-                          <span className="text-xs font-semibold text-cyan-300">
-                            {isUploadingDoc ? "កំពុងអាន & បញ្ចូលឯកសារ..." : "ជ្រើសរើសឯកសារ Upload"}
-                          </span>
-                          <input
-                            type="file"
-                            accept=".txt,.csv,.json,.pdf,.doc,.docx"
-                            onChange={handleFileUpload}
-                            disabled={isUploadingDoc}
-                            className="hidden"
-                          />
-                        </label>
-
-                        {/* Uploaded Documents List */}
-                        {aiDocuments.length > 0 && (
-                          <div className="mt-3 space-y-1.5 max-h-32 overflow-y-auto">
-                            <span className="text-[10px] font-bold uppercase text-slate-400">
-                              ឯកសារដែលបានបញ្ចូល ({aiDocuments.length})៖
-                            </span>
-                            {aiDocuments.map((doc) => (
-                              <div
-                                key={doc.id}
-                                className="flex items-center justify-between rounded-lg bg-slate-900/80 px-2.5 py-1.5 text-[11px] border border-slate-800"
-                              >
-                                <div className="flex items-center gap-1.5 truncate pr-2">
-                                  <span className="text-cyan-400">📄</span>
-                                  <span className="text-slate-200 truncate">{doc.name}</span>
-                                  <span className="text-[9px] text-slate-500">
-                                    ({Math.round(doc.size / 1024)} KB)
-                                  </span>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteDoc(doc.id)}
-                                  className="text-slate-500 hover:text-rose-400 p-0.5"
-                                  title="លុបឯកសារនេះចេញពី Bot"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-purple-200 mb-1">
-                          🎭 ១. តួនាទី & អត្តចរិត Bot (Persona)
-                        </label>
-                        <input
-                          type="text"
-                          value={aiPersona}
-                          onChange={(e) => setAiPersona(e.target.value)}
-                          placeholder="ឧ. ជំនួយការ AI របស់ VST ឆ្លាតវៃ រួសរាយ និងស្មោះត្រង់..."
-                          className="w-full rounded-xl border border-slate-700 bg-slate-900/80 p-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-purple-400"
-                        />
-                      </div>
-
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <label className="block text-xs font-semibold text-purple-200">
-                            📚 ២. ឃ្លាំងចំណេះដឹងផលិតផល (Knowledge Base)
-                          </label>
-                          <span className="text-[10px] text-slate-400">ចងចាំក្នុង Bot ទាំងអស់</span>
-                        </div>
-                        <textarea
-                          rows={4}
-                          value={aiKnowledgeBase}
-                          onChange={(e) => setAiKnowledgeBase(e.target.value)}
-                          placeholder="ឧ. ផលិតផល VST Kidney Pro: តម្លៃ $25, ជួយសម្រួលតម្រងនោម នោមញឹក ឈឺចង្កេះ...&#10;ផលិតផល Emmi: តម្លៃ $18, ជួយបញ្ហារោគស្ត្រី ធ្លាក់ស រមាស់..."
-                          className="w-full rounded-xl border border-slate-700 bg-slate-900/80 p-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-purple-400 font-sans"
-                        />
-                      </div>
-
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <label className="block text-xs font-semibold text-purple-200">
-                            ⛔ ៣. ច្បាប់ & បម្រាមពិសេស (Strict Rules)
-                          </label>
-                          <span className="text-[10px] text-slate-400">ការពារការឆ្លើយខុស</span>
-                        </div>
-                        <textarea
-                          rows={3}
-                          value={aiRules}
-                          onChange={(e) => setAiRules(e.target.value)}
-                          placeholder="ឧ. ហាមប្រាប់តម្លៃលើ Comment ជាដាច់ខាត! ត្រូវឆ្លើយតបបែបផ្អែមល្ហែម និងទាក់ទាញ ហើយប្រាប់ឱ្យភ្ញៀវឆែកមើល Inbox..."
-                          className="w-full rounded-xl border border-slate-700 bg-slate-900/80 p-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-purple-400 font-sans"
-                        />
-                      </div>
-
-                      {/* Save Knowledge Button */}
-                      <div className="pt-1">
-                        <button
-                          type="button"
-                          onClick={handleSaveAiKnowledge}
-                          disabled={isSavingKnowledge}
-                          className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 py-2.5 text-xs font-bold text-white shadow-lg shadow-purple-600/30 hover:from-purple-500 hover:to-indigo-500 transition disabled:opacity-50"
-                        >
-                          <span>💾</span>
-                          <span>{isSavingKnowledge ? "កំពុងរក្សាទុកក្នុង Supabase..." : "រក្សាទុកចំណេះដឹង AI (Save Memory)"}</span>
-                        </button>
-
-                        {knowledgeSavedSuccess && (
-                          <div className="mt-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-2 text-center text-xs font-semibold text-emerald-400 flex items-center justify-center gap-1.5">
-                            <CheckCircle2 className="h-4 w-4" />
-                            <span>ចំណេះដឹងត្រូវបានចងចាំក្នុង Supabase Database រួចរាល់!</span>
-                          </div>
-                        )}
-                      </div>
+                      <p className="text-xs text-slate-400 mt-1">
+                        {lang === "km"
+                          ? "កំណត់អត្តចរិត AI (Persona), ឃ្លាំងចំណេះដឹងផលិតផល, ច្បាប់តឹងរ៉ឹង និងការបិទបើក Bot ទូទាំងប្រព័ន្ធ"
+                          : "Configure AI persona, tone, product knowledge base, strict rules, and master bot toggle"}
+                      </p>
                     </div>
-                  )}
+                  </div>
+
+                  <div className="flex items-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={handleSaveAiKnowledge}
+                      disabled={isSavingKnowledge}
+                      className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-500 px-5 py-2.5 text-xs font-bold text-white shadow-lg shadow-purple-600/30 hover:from-purple-500 hover:to-indigo-500 transition disabled:opacity-50"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      <span>{isSavingKnowledge ? (lang === "km" ? "កំពុងរក្សាទុក..." : "Saving...") : (lang === "km" ? "រក្សាទុកចំណេះដឹង (Save)" : "Save Knowledge")}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Success Alert */}
+                {knowledgeSavedSuccess && (
+                  <div className="mt-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 p-3 text-center text-xs font-semibold text-emerald-400 flex items-center justify-center gap-2 animate-fade-in">
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span>{lang === "km" ? "ចំណេះដឹង AI ត្រូវបានចងចាំក្នុង Supabase Database រួចរាល់!" : "AI knowledge saved to Supabase successfully!"}</span>
+                  </div>
+                )}
+
+                {/* Training Settings Form Cards */}
+                <div className="space-y-5 pt-6 text-xs">
+                  {/* Master Bot Switch Card */}
+                  <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <div className="text-sm font-bold text-white flex items-center gap-2">
+                        <span>⚡ ដំណើរការ Bot ទូទៅ (Master Bot Switch)</span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {masterBotEnabled
+                          ? "🟢 កំពុងដំណើរការធម្មតា — ឆ្លើយតប Comment & Support Chat តាម AI"
+                          : "🔴 បានផ្អាកបណ្ដោះអាសន្ន — សម្រាប់ដំណាក់កាលរៀនសូត្រ (Bot នឹងមិនទាន់ឆ្លើយតបភ្ញៀវទេ)"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setMasterBotEnabled(!masterBotEnabled)}
+                      className={`relative inline-flex h-6 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        masterBotEnabled ? "bg-emerald-500 shadow-md shadow-emerald-500/20" : "bg-slate-700"
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          masterBotEnabled ? "translate-x-6" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* 1. Persona Card */}
+                  <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-purple-200 flex items-center gap-1.5">
+                        <span>🎭 ១. តួនាទី & អត្តចរិត Bot (Persona & Tone)</span>
+                      </label>
+                      <span className="text-[10px] text-slate-400">កំណត់របៀបនិយាយ និងកម្រិតស្និទ្ធស្នាល</span>
+                    </div>
+                    <input
+                      type="text"
+                      value={aiPersona}
+                      onChange={(e) => setAiPersona(e.target.value)}
+                      placeholder="ឧ. ដើរតួជាអ្នកលក់ស្រីវ័យក្មេង សម្តីផ្អែមល្ហែម រួសរាយ ឆ្លាតវៃ ហាមឆ្លើយវែងៗ..."
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950/80 p-3 text-xs text-white placeholder-slate-500 outline-none focus:border-purple-400 transition"
+                    />
+                  </div>
+
+                  {/* 2. Knowledge Base Card */}
+                  <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-purple-200 flex items-center gap-1.5">
+                        <span>📚 ២. ឃ្លាំងចំណេះដឹងផលិតផល (Knowledge Base & Memory)</span>
+                      </label>
+                      <span className="text-[10px] text-slate-400">ចងចាំក្នុង Bot គ្រប់ពេល</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      ព័ត៌មានលម្អិតផលិតផល គុណប្រយោជន៍ តម្លៃ និងប្រូម៉ូសិន ដែល AI នឹងយកទៅឆ្លើយតបភ្ញៀវ៖
+                    </p>
+                    <textarea
+                      rows={6}
+                      value={aiKnowledgeBase}
+                      onChange={(e) => setAiKnowledgeBase(e.target.value)}
+                      placeholder="ឧ. ផលិតផល VST Kidney Pro: តម្លៃ $25, ជួយសម្រួលតម្រងនោម នោមញឹក ឈឺចង្កេះ...&#10;ផលិតផល Emmi: តម្លៃ $18, ជួយបញ្ហារោគស្ត្រី ធ្លាក់ស រមាស់..."
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950/80 p-3 text-xs text-white placeholder-slate-500 outline-none focus:border-purple-400 transition font-sans"
+                    />
+                  </div>
+
+                  {/* 3. Strict Rules Card */}
+                  <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-purple-200 flex items-center gap-1.5">
+                        <span>⛔ ៣. ច្បាប់ & បម្រាមពិសេស (Strict Rules & FAQs)</span>
+                      </label>
+                      <span className="text-[10px] text-slate-400">ការពារការឆ្លើយខុស</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      បម្រាមដែល Bot ដាច់ខាតមិនត្រូវបំពាន (ឧ. ហាមប្រាប់តម្លៃលើ Comment ឱ្យទាញភ្ញៀវចូល Inbox)៖
+                    </p>
+                    <textarea
+                      rows={4}
+                      value={aiRules}
+                      onChange={(e) => setAiRules(e.target.value)}
+                      placeholder="ឧ. ហាមប្រាប់តម្លៃលើ Comment ជាដាច់ខាត! ត្រូវឆ្លើយតបបែបផ្អែមល្ហែម និងទាក់ទាញ ហើយប្រាប់ឱ្យភ្ញៀវឆែកមើល Inbox..."
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950/80 p-3 text-xs text-white placeholder-slate-500 outline-none focus:border-purple-400 transition font-sans"
+                    />
+                  </div>
+
+                  {/* Action Save Button */}
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={handleSaveAiKnowledge}
+                      disabled={isSavingKnowledge}
+                      className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-500 py-3 text-xs font-bold text-white shadow-xl shadow-purple-600/30 hover:from-purple-500 hover:to-indigo-500 transition disabled:opacity-50"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      <span>{isSavingKnowledge ? (lang === "km" ? "កំពុងរក្សាទុកក្នុង Supabase..." : "Saving...") : (lang === "km" ? "💾 រក្សាទុកចំណេះដឹង AI ទាំងអស់ (Save Memory)" : "💾 Save All AI Memory")}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -4015,12 +4167,27 @@ export default function VSTAssistantApp() {
 
                 {/* Chat input */}
                 <div className="border-t border-slate-800 p-3 bg-slate-900/95 flex items-center gap-2">
+                  {isAdmin && (
+                    <label
+                      className="cursor-pointer p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-cyan-400 transition shrink-0"
+                      title="Upload ឯកសារចំណេះដឹងឱ្យ Bot"
+                    >
+                      <Paperclip className="h-4 w-4" />
+                      <input
+                        type="file"
+                        accept=".txt,.csv,.json,.pdf,.doc,.docx"
+                        onChange={handleFileUpload}
+                        disabled={isUploadingDoc}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
                   <input
                     type="text"
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleSendChat()}
-                    placeholder={isAdmin ? "សួរបញ្ជា Bot គ្រប់រឿងក្នុង Web App (Super Admin)..." : "វាយសំណួររបស់អ្នកនៅទីនេះ..."}
+                    placeholder={isAdmin ? "សួរបញ្ជា Bot គ្រប់រឿង ឬចុច 📎 Upload..." : "វាយសំណួររបស់អ្នកនៅទីនេះ..."}
                     className="flex-1 rounded-full border border-slate-700 bg-slate-800/90 px-4 py-2.5 text-xs text-white placeholder-slate-400 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400"
                   />
                   <button
