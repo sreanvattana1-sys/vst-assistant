@@ -1620,7 +1620,7 @@ export default function VSTAssistantApp() {
         <nav className="flex-1 space-y-4 p-3 overflow-y-auto">
           {/* GROUP 1: MAIN */}
           <div>
-            <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-[#64748B]">
+            <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
               {lang === "km" ? "ទំព័រគោល (Main)" : "Main"}
             </div>
             <div className="space-y-1">
@@ -1636,18 +1636,22 @@ export default function VSTAssistantApp() {
                   <button
                     key={item.id}
                     onClick={() => setActiveTab(item.id)}
-                    className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-xs font-medium transition ${
+                    className={`flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-medium transition-all duration-200 ${
                       isActive
-                        ? "bg-[#162033] text-[#38BDF8] border border-[#223047] font-semibold shadow-xs"
-                        : "text-[#94A3B8] hover:bg-[#111827] hover:text-[#F8FAFC]"
+                        ? "bg-gradient-to-r from-blue-600 via-cyan-600 to-teal-500 text-white font-bold shadow-lg shadow-cyan-500/25 border border-cyan-400/40 translate-x-1"
+                        : "text-slate-400 hover:bg-slate-800/60 hover:text-white hover:translate-x-1"
                     }`}
                   >
                     <div className="flex items-center gap-2.5">
-                      <Icon className={`h-4 w-4 ${isActive ? "text-[#38BDF8]" : "text-[#94A3B8]"}`} />
+                      <Icon className={`h-4 w-4 ${isActive ? "text-white drop-shadow-sm" : "text-slate-400"}`} />
                       <span>{item.label}</span>
                     </div>
                     {item.badge && (
-                      <span className="rounded-full bg-rose-500/20 border border-rose-500/30 px-1.5 py-0.2 text-[10px] font-bold text-rose-300">
+                      <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                        isActive
+                          ? "bg-white/20 text-white"
+                          : "bg-rose-500/20 border border-rose-500/30 text-rose-300"
+                      }`}>
                         {item.badge}
                       </span>
                     )}
@@ -1659,7 +1663,7 @@ export default function VSTAssistantApp() {
 
           {/* GROUP 2: AUTOMATION */}
           <div>
-            <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-[#64748B]">
+            <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
               {lang === "km" ? "ស្វ័យប្រវត្តិកម្ម (Automation)" : "Automation"}
             </div>
             <div className="space-y-1">
@@ -1678,18 +1682,22 @@ export default function VSTAssistantApp() {
                   <button
                     key={item.id}
                     onClick={() => setActiveTab(item.id)}
-                    className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-xs font-medium transition ${
+                    className={`flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-medium transition-all duration-200 ${
                       isActive
-                        ? "bg-[#162033] text-[#38BDF8] border border-[#223047] font-semibold shadow-xs"
-                        : "text-[#94A3B8] hover:bg-[#111827] hover:text-[#F8FAFC]"
+                        ? "bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-600 text-white font-bold shadow-lg shadow-purple-500/25 border border-purple-400/40 translate-x-1"
+                        : "text-slate-400 hover:bg-slate-800/60 hover:text-white hover:translate-x-1"
                     }`}
                   >
                     <div className="flex items-center gap-2.5">
-                      <Icon className={`h-4 w-4 ${isActive ? "text-[#38BDF8]" : "text-[#94A3B8]"}`} />
+                      <Icon className={`h-4 w-4 ${isActive ? "text-white drop-shadow-sm" : "text-slate-400"}`} />
                       <span>{item.label}</span>
                     </div>
                     {item.badge && (
-                      <span className="rounded-full bg-violet-500/20 border border-violet-500/30 px-1.5 py-0.2 text-[10px] font-bold text-violet-300">
+                      <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                        isActive
+                          ? "bg-white/20 text-white"
+                          : "bg-purple-500/20 border border-purple-500/30 text-purple-300"
+                      }`}>
                         {item.badge}
                       </span>
                     )}
@@ -1701,7 +1709,7 @@ export default function VSTAssistantApp() {
 
           {/* GROUP 3: MANAGEMENT */}
           <div>
-            <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-[#64748B]">
+            <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
               {lang === "km" ? "ការគ្រប់គ្រង (Management)" : "Management"}
             </div>
             <div className="space-y-1">
@@ -1719,18 +1727,22 @@ export default function VSTAssistantApp() {
                   <button
                     key={item.id}
                     onClick={() => setActiveTab(item.id)}
-                    className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-xs font-medium transition ${
+                    className={`flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-medium transition-all duration-200 ${
                       isActive
-                        ? "bg-[#162033] text-[#38BDF8] border border-[#223047] font-semibold shadow-xs"
-                        : "text-[#94A3B8] hover:bg-[#111827] hover:text-[#F8FAFC]"
+                        ? "bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 text-white font-bold shadow-lg shadow-amber-500/25 border border-amber-400/40 translate-x-1"
+                        : "text-slate-400 hover:bg-slate-800/60 hover:text-white hover:translate-x-1"
                     }`}
                   >
                     <div className="flex items-center gap-2.5">
-                      <Icon className={`h-4 w-4 ${isActive ? "text-[#38BDF8]" : "text-[#94A3B8]"}`} />
+                      <Icon className={`h-4 w-4 ${isActive ? "text-white drop-shadow-sm" : "text-slate-400"}`} />
                       <span>{item.label}</span>
                     </div>
                     {item.badge && (
-                      <span className="rounded-full bg-amber-500/20 border border-amber-500/30 px-1.5 py-0.2 text-[10px] font-bold text-amber-300">
+                      <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                        isActive
+                          ? "bg-white/20 text-white"
+                          : "bg-amber-500/20 border border-amber-500/30 text-amber-300"
+                      }`}>
                         {item.badge}
                       </span>
                     )}
@@ -1930,139 +1942,177 @@ export default function VSTAssistantApp() {
         </header>
 
         {/* CONTENT TABS */}
-        <div className="flex-1 p-6 lg:p-8 max-w-7xl mx-auto w-full">
+        <div className="flex-1 p-6 lg:p-8 max-w-7xl mx-auto w-full relative">
+          {/* AMBIENT BACKGROUND GLOW EFFECTS */}
+          <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+            <div className="absolute -top-32 left-1/4 w-[500px] h-[500px] bg-gradient-to-tr from-cyan-500/10 via-blue-600/10 to-transparent rounded-full blur-3xl animate-pulse-glow" />
+            <div className="absolute top-1/3 -right-20 w-[450px] h-[450px] bg-gradient-to-bl from-purple-500/10 via-indigo-600/10 to-transparent rounded-full blur-3xl animate-pulse-glow" style={{ animationDelay: "3s" }} />
+            <div className="absolute -bottom-20 left-1/3 w-[500px] h-[500px] bg-gradient-to-tr from-teal-500/10 via-emerald-600/5 to-transparent rounded-full blur-3xl animate-pulse-glow" style={{ animationDelay: "1.5s" }} />
+          </div>
+
           {/* TAB 1: DASHBOARD */}
           {activeTab === "dashboard" && (
-            <div className="space-y-6">
-              {/* TOP COMMAND CENTER HEADER */}
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl border border-[#223047] bg-[#111827] p-5 shadow-xs">
-                <div>
-                  <div className="flex items-center gap-2.5">
-                    <h2 className="text-lg font-bold text-[#F8FAFC]">
-                      {lang === "km" ? `សួស្ដី, ${currentUser.name || "Admin"} 👋` : `Welcome, ${currentUser.name || "Admin"} 👋`}
-                    </h2>
-                    <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                      Live 24/7
-                    </span>
+            <div className="space-y-6 relative z-10 animate-fade-in">
+              {/* TOP COMMAND CENTER HEADER WITH GRADIENT ACCENT */}
+              <div className="relative overflow-hidden rounded-3xl border border-cyan-500/30 bg-gradient-to-r from-[#0d1e38]/90 via-[#0d1629]/90 to-[#120e2e]/90 p-6 shadow-xl backdrop-blur-xl transition-all duration-300 hover:border-cyan-400/50">
+                <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent" />
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2.5">
+                      <h2 className="text-xl font-black bg-gradient-to-r from-white via-cyan-100 to-cyan-400 bg-clip-text text-transparent tracking-tight">
+                        {lang === "km" ? `សួស្ដី, ${currentUser.name || "Admin"} 👋` : `Welcome, ${currentUser.name || "Admin"} 👋`}
+                      </h2>
+                      <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 text-[10px] font-bold text-emerald-300 shadow-sm shadow-emerald-500/20">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        Live 24/7
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300 mt-1 max-w-xl">
+                      {lang === "km"
+                        ? "មជ្ឈមណ្ឌលបញ្ជា & តាមដានស្វ័យប្រវត្តិកម្មឆ្លើយតប Facebook Pages និងអតិថិជន Leads"
+                        : "Command center for Facebook Page auto-reply and customer leads tracking"}
+                    </p>
                   </div>
-                  <p className="text-xs text-[#94A3B8] mt-1">
-                    {lang === "km"
-                      ? "មជ្ឈមណ្ឌលបញ្ជា & តាមដានស្វ័យប្រវត្តិកម្មឆ្លើយតប Facebook Pages និងអតិថិជន Leads"
-                      : "Command center for Facebook Page auto-reply and customer leads tracking"}
-                  </p>
-                </div>
 
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <button
-                    onClick={() => setActiveTab("pages")}
-                    className="flex items-center gap-2 rounded-xl border border-[#223047] bg-[#162033] px-3.5 py-2 text-xs font-semibold text-[#F8FAFC] hover:border-[#38BDF8] hover:text-[#38BDF8] transition"
-                  >
-                    <FileText className="h-3.5 w-3.5 text-[#38BDF8]" />
-                    <span>{lang === "km" ? "គ្រប់គ្រង Pages" : "Manage Pages"}</span>
-                  </button>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <button
+                      onClick={() => setActiveTab("pages")}
+                      className="flex items-center gap-2 rounded-xl border border-slate-700/80 bg-slate-800/80 hover:bg-slate-750 px-4 py-2.5 text-xs font-semibold text-white shadow-md hover:border-cyan-400 hover:shadow-cyan-500/20 hover:scale-[1.02] active:scale-95 transition-all duration-200"
+                    >
+                      <FileText className="h-3.5 w-3.5 text-cyan-400" />
+                      <span>{lang === "km" ? "គ្រប់គ្រង Pages" : "Manage Pages"}</span>
+                    </button>
 
-                  <button
-                    onClick={runScanner}
-                    disabled={isScanning}
-                    className="flex items-center gap-2 rounded-xl bg-[#38BDF8] hover:bg-[#0EA5E9] px-3.5 py-2 text-xs font-semibold text-[#080D17] transition shadow-xs disabled:opacity-50"
-                  >
-                    <RefreshCw className={`h-3.5 w-3.5 ${isScanning ? "animate-spin" : ""}`} />
-                    <span>{isScanning ? (lang === "km" ? "កំពុងស្កេន..." : "Scanning...") : (lang === "km" ? "ស្កេន Comments ឥឡូវនេះ" : "Scan Comments")}</span>
-                  </button>
+                    <button
+                      onClick={runScanner}
+                      disabled={isScanning}
+                      className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/40 hover:scale-[1.02] active:scale-95 transition-all duration-200 disabled:opacity-50"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${isScanning ? "animate-spin" : ""}`} />
+                      <span>{isScanning ? (lang === "km" ? "កំពុងស្កេន..." : "Scanning...") : (lang === "km" ? "ស្កេន Comments ឥឡូវនេះ" : "Scan Comments")}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* KPI CARDS */}
+              {/* 4 STUNNING GRADIENT KPI CARDS */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {[
-                  {
-                    title: "Comment តបស្វ័យប្រវត្តិ",
-                    value: liveCommentCount > 0 ? liveCommentCount.toString() : "148",
-                    change: liveCommentCount > 0 ? `${liveCommentCount} comments ស្កេនបាន` : "+24% ធៀបម្សិលមិញ",
-                    icon: MessageSquare,
-                    iconColor: "text-[#38BDF8]",
-                    iconBg: "bg-[#38BDF8]/10 border border-[#38BDF8]/20",
-                    statusText: "ដំណើរការល្អ",
-                    statusColor: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
-                  },
-                  {
-                    title: "សារ DM ផ្ញើទៅ Inbox Auto",
-                    value: "92",
-                    change: "+15% ធៀបម្សិលមិញ",
-                    icon: Send,
-                    iconColor: "text-[#8B5CF6]",
-                    iconBg: "bg-[#8B5CF6]/10 border border-[#8B5CF6]/20",
-                    statusText: "បញ្ជូនជោគជ័យ",
-                    statusColor: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
-                  },
-                  {
-                    title: "អតិថិជនចាប់អារម្មណ៍ (Hot Leads)",
-                    value: "35",
-                    change: "leads ថ្មីថ្ងៃនេះ",
-                    icon: Users,
-                    iconColor: "text-amber-400",
-                    iconBg: "bg-amber-400/10 border border-amber-400/20",
-                    statusText: "កើនឡើង",
-                    statusColor: "text-amber-400 bg-amber-500/10 border-amber-500/20",
-                  },
-                  {
-                    title: "ការកុម្ម៉ង់ជោគជ័យ (Orders)",
-                    value: "18",
-                    change: "+5 orders ថ្ងៃនេះ",
-                    icon: Package,
-                    iconColor: "text-emerald-400",
-                    iconBg: "bg-emerald-400/10 border border-emerald-400/20",
-                    statusText: "បិទការលក់",
-                    statusColor: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
-                  },
-                ].map((stat, i) => {
-                  const Icon = stat.icon;
-                  return (
-                    <div
-                      key={i}
-                      className="rounded-2xl border border-[#223047] bg-[#111827] p-5 shadow-xs hover:bg-[#162033] hover:border-[#334155] transition flex flex-col justify-between"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-[#94A3B8]">{stat.title}</span>
-                        <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${stat.iconBg}`}>
-                          <Icon className={`h-4 w-4 ${stat.iconColor}`} />
-                        </div>
-                      </div>
-
-                      <div className="mt-3">
-                        <div className="text-2xl font-bold text-[#F8FAFC] tracking-tight">
-                          {stat.value}
-                        </div>
-                      </div>
-
-                      <div className="mt-3 flex items-center justify-between pt-2.5 border-t border-[#223047]/60 text-[11px]">
-                        <span className="text-emerald-400 font-medium">{stat.change}</span>
-                        <span className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold ${stat.statusColor}`}>
-                          ● {stat.statusText}
-                        </span>
-                      </div>
+                {/* CARD 1: COMMENTS */}
+                <div className="group relative overflow-hidden rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-[#0a2342]/90 via-[#0b172a]/90 to-[#07111e]/90 p-5 shadow-lg backdrop-blur-xl transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl hover:shadow-cyan-500/20 hover:border-cyan-400/60 flex flex-col justify-between">
+                  <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-cyan-500 to-blue-500 opacity-80 group-hover:opacity-100 transition" />
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-slate-300">Comment តបស្វ័យប្រវត្តិ</span>
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/30 group-hover:scale-110 transition duration-300">
+                      <MessageSquare className="h-4.5 w-4.5" />
                     </div>
-                  );
-                })}
+                  </div>
+
+                  <div className="mt-3">
+                    <div className="text-3xl font-black tracking-tight bg-gradient-to-r from-white via-cyan-100 to-cyan-400 bg-clip-text text-transparent">
+                      {liveCommentCount > 0 ? liveCommentCount.toString() : "148"}
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between pt-2.5 border-t border-cyan-500/20 text-[11px]">
+                    <span className="text-cyan-300 font-medium">
+                      {liveCommentCount > 0 ? `${liveCommentCount} comments ស្កេនបាន` : "+24% ធៀបម្សិលមិញ"}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full border border-cyan-500/30 bg-cyan-500/10 text-[10px] font-semibold text-cyan-300">
+                      ● ដំណើរការល្អ
+                    </span>
+                  </div>
+                </div>
+
+                {/* CARD 2: MESSAGES DM */}
+                <div className="group relative overflow-hidden rounded-2xl border border-purple-500/30 bg-gradient-to-br from-[#241347]/90 via-[#150f29]/90 to-[#0c091a]/90 p-5 shadow-lg backdrop-blur-xl transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl hover:shadow-purple-500/20 hover:border-purple-400/60 flex flex-col justify-between">
+                  <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-purple-500 to-indigo-500 opacity-80 group-hover:opacity-100 transition" />
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-slate-300">សារ DM ផ្ញើទៅ Inbox Auto</span>
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-purple-500 to-indigo-600 text-white shadow-md shadow-purple-500/30 group-hover:scale-110 transition duration-300">
+                      <Send className="h-4.5 w-4.5" />
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    <div className="text-3xl font-black tracking-tight bg-gradient-to-r from-white via-purple-100 to-purple-400 bg-clip-text text-transparent">
+                      92
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between pt-2.5 border-t border-purple-500/20 text-[11px]">
+                    <span className="text-purple-300 font-medium">+15% ធៀបម្សិលមិញ</span>
+                    <span className="px-2 py-0.5 rounded-full border border-purple-500/30 bg-purple-500/10 text-[10px] font-semibold text-purple-300">
+                      ● បញ្ជូនជោគជ័យ
+                    </span>
+                  </div>
+                </div>
+
+                {/* CARD 3: HOT LEADS */}
+                <div className="group relative overflow-hidden rounded-2xl border border-amber-500/30 bg-gradient-to-br from-[#3b230f]/90 via-[#21160d]/90 to-[#140e09]/90 p-5 shadow-lg backdrop-blur-xl transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl hover:shadow-amber-500/20 hover:border-amber-400/60 flex flex-col justify-between">
+                  <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-amber-500 to-orange-500 opacity-80 group-hover:opacity-100 transition" />
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-slate-300">អតិថិជនចាប់អារម្មណ៍ (Hot Leads)</span>
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-amber-500 to-orange-600 text-white shadow-md shadow-amber-500/30 group-hover:scale-110 transition duration-300">
+                      <Users className="h-4.5 w-4.5" />
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    <div className="text-3xl font-black tracking-tight bg-gradient-to-r from-white via-amber-100 to-amber-400 bg-clip-text text-transparent">
+                      35
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between pt-2.5 border-t border-amber-500/20 text-[11px]">
+                    <span className="text-amber-300 font-medium">leads ថ្មីថ្ងៃនេះ</span>
+                    <span className="px-2 py-0.5 rounded-full border border-amber-500/30 bg-amber-500/10 text-[10px] font-semibold text-amber-300">
+                      ● កើនឡើង
+                    </span>
+                  </div>
+                </div>
+
+                {/* CARD 4: ORDERS */}
+                <div className="group relative overflow-hidden rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-[#0b3824]/90 via-[#0c2117]/90 to-[#07140e]/90 p-5 shadow-lg backdrop-blur-xl transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl hover:shadow-emerald-500/20 hover:border-emerald-400/60 flex flex-col justify-between">
+                  <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-emerald-500 to-teal-500 opacity-80 group-hover:opacity-100 transition" />
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-slate-300">ការកុម្ម៉ង់ជោគជ័យ (Orders)</span>
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-500/30 group-hover:scale-110 transition duration-300">
+                      <Package className="h-4.5 w-4.5" />
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    <div className="text-3xl font-black tracking-tight bg-gradient-to-r from-white via-emerald-100 to-emerald-400 bg-clip-text text-transparent">
+                      18
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between pt-2.5 border-t border-emerald-500/20 text-[11px]">
+                    <span className="text-emerald-300 font-medium">+5 orders ថ្ងៃនេះ</span>
+                    <span className="px-2 py-0.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-[10px] font-semibold text-emerald-300">
+                      ● បិទការលក់
+                    </span>
+                  </div>
+                </div>
               </div>
 
               {/* MIDDLE SECTION: ACTIVE PAGES & AUTOMATION HEALTH */}
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 {/* Active Pages Status Card */}
-                <div className="lg:col-span-2 rounded-2xl border border-[#223047] bg-[#111827] p-5.5 shadow-xs">
+                <div className="lg:col-span-2 rounded-3xl border border-cyan-500/20 bg-gradient-to-br from-[#0c182b]/85 via-[#0e1626]/85 to-[#080d17]/95 p-6 shadow-xl backdrop-blur-xl hover:border-cyan-500/40 transition-all duration-300">
                   <div className="flex items-center justify-between mb-4">
                     <div>
-                      <h3 className="font-bold text-[#F8FAFC] text-sm">
-                        Facebook Pages កំពុងភ្ជាប់ & ដំណើរការ
+                      <h3 className="font-bold text-[#F8FAFC] text-sm flex items-center gap-2">
+                        <span>Facebook Pages កំពុងភ្ជាប់ & ដំណើរការ</span>
+                        <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
                       </h3>
-                      <p className="text-[11px] text-[#94A3B8] mt-0.5">
+                      <p className="text-[11px] text-slate-400 mt-0.5">
                         បញ្ជី Pages ដែល Bot កំពុងការពារ និងតប Comment ដោយស្វ័យប្រវត្តិ
                       </p>
                     </div>
                     <button
                       onClick={() => setActiveTab("pages")}
-                      className="text-xs text-[#38BDF8] hover:underline flex items-center gap-1 font-medium"
+                      className="text-xs text-cyan-400 hover:text-cyan-300 hover:underline flex items-center gap-1 font-semibold transition"
                     >
                       <span>គ្រប់គ្រង Pages</span>
                       <ChevronRight className="h-3.5 w-3.5" />
@@ -2092,22 +2142,22 @@ export default function VSTAssistantApp() {
                     ].map((p, i) => (
                       <div
                         key={i}
-                        className="flex items-center justify-between rounded-xl border border-[#223047] bg-[#0B1220]/60 p-3.5 transition hover:border-[#334155] hover:bg-[#162033]"
+                        className="flex items-center justify-between rounded-2xl border border-slate-800/80 bg-slate-900/60 p-3.5 transition-all duration-200 hover:border-cyan-500/40 hover:bg-slate-800/60 hover:scale-[1.01] hover:shadow-md hover:shadow-cyan-950/40"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-[#38BDF8] to-blue-600 font-bold text-white text-xs">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 font-bold text-white text-xs shadow-md shadow-cyan-500/25">
                             FP
                           </div>
                           <div>
                             <div className="font-semibold text-xs text-[#F8FAFC]">{p.name}</div>
-                            <div className="text-[11px] text-[#94A3B8]">{p.followers}</div>
+                            <div className="text-[11px] text-slate-400">{p.followers}</div>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-5">
                           <div className="text-right">
-                            <div className="text-[11px] text-[#94A3B8]">Comments ថ្ងៃនេះ</div>
-                            <div className="text-xs font-bold text-[#38BDF8]">{p.commentsToday}</div>
+                            <div className="text-[11px] text-slate-400">Comments ថ្ងៃនេះ</div>
+                            <div className="text-xs font-bold text-cyan-300">{p.commentsToday}</div>
                           </div>
                           <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-400 border border-emerald-500/20">
                             ● ដំណើរការល្អ
@@ -2119,12 +2169,13 @@ export default function VSTAssistantApp() {
                 </div>
 
                 {/* Automation Health & Setup Status */}
-                <div className="rounded-2xl border border-[#223047] bg-[#111827] p-5.5 shadow-xs flex flex-col justify-between">
+                <div className="rounded-3xl border border-purple-500/20 bg-gradient-to-br from-[#160f2e]/85 via-[#110e24]/85 to-[#090814]/95 p-6 shadow-xl backdrop-blur-xl hover:border-purple-500/40 transition-all duration-300 flex flex-col justify-between">
                   <div>
-                    <h3 className="font-bold text-[#F8FAFC] text-sm mb-1">
-                      ស្ថានភាពប្រព័ន្ធស្វ័យប្រវត្តិកម្ម (Health)
+                    <h3 className="font-bold text-[#F8FAFC] text-sm mb-1 flex items-center gap-2">
+                      <span>ស្ថានភាពប្រព័ន្ធស្វ័យប្រវត្តិកម្ម (Health)</span>
+                      <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
                     </h3>
-                    <p className="text-[11px] text-[#94A3B8] leading-relaxed mb-4">
+                    <p className="text-[11px] text-slate-400 leading-relaxed mb-4">
                       សេវាកម្មស្នូលទាំងអស់កំពុងដំណើរការពេញលេញ ២៤ ម៉ោង៖
                     </p>
 
@@ -2135,9 +2186,9 @@ export default function VSTAssistantApp() {
                         { title: "Smart Reply Google Gemini AI", status: "Active" },
                         { title: "Customer Leads CRM Database", status: "Active" },
                       ].map((item, i) => (
-                        <div key={i} className="flex items-center justify-between text-slate-300 py-1 border-b border-[#223047]/50 last:border-0">
+                        <div key={i} className="flex items-center justify-between text-slate-300 py-1 border-b border-purple-500/15 last:border-0">
                           <div className="flex items-center gap-2">
-                            <CheckCircle2 className="h-3.5 w-3.5 text-[#38BDF8] shrink-0" />
+                            <CheckCircle2 className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
                             <span className="text-[11px]">{item.title}</span>
                           </div>
                           <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
@@ -2148,12 +2199,12 @@ export default function VSTAssistantApp() {
                     </div>
                   </div>
 
-                  <div className="mt-5 rounded-xl border border-[#223047] bg-[#0B1220] p-3.5">
-                    <div className="text-[11px] font-semibold text-[#38BDF8] flex items-center justify-between">
+                  <div className="mt-5 rounded-2xl border border-purple-500/20 bg-[#080814]/80 p-3.5">
+                    <div className="text-[11px] font-semibold text-purple-300 flex items-center justify-between">
                       <span>Webhook Live Endpoint</span>
                       <span className="text-[10px] text-emerald-400 font-mono">POST 200 OK</span>
                     </div>
-                    <code className="mt-1.5 block text-[10px] text-[#94A3B8] bg-[#080D17] p-2 rounded-lg font-mono break-all border border-[#223047]/60">
+                    <code className="mt-1.5 block text-[10px] text-slate-300 bg-slate-950/80 p-2 rounded-xl font-mono break-all border border-purple-500/20">
                       https://vst-assistant.vercel.app/api/webhook
                     </code>
                   </div>
@@ -2161,23 +2212,23 @@ export default function VSTAssistantApp() {
               </div>
 
               {/* LIVE REAL-TIME FACEBOOK COMMENTS & REPLIES FEED */}
-              <div className="rounded-2xl border border-[#223047] bg-[#111827] p-6 shadow-xs">
-                <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[#223047]">
+              <div className="rounded-3xl border border-blue-500/20 bg-gradient-to-br from-[#0c182b]/85 via-[#0d1424]/85 to-[#080d17]/95 p-6 shadow-xl backdrop-blur-xl">
+                <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#38BDF8]/10 border border-[#38BDF8]/20 text-[#38BDF8]">
-                      <MessageCircle className="h-4.5 w-4.5" />
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/30">
+                      <MessageCircle className="h-5 w-5" />
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
                         <h3 className="font-bold text-[#F8FAFC] text-sm">
                           សកម្មភាព Comment ផ្ទាល់លើ Facebook (Live Activities Feed)
                         </h3>
-                        <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400 border border-emerald-500/20">
+                        <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[10px] font-bold text-emerald-300 border border-emerald-500/30">
                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
                           Live Real-time
                         </span>
                       </div>
-                      <p className="text-[11px] text-[#94A3B8] mt-0.5">
+                      <p className="text-[11px] text-slate-400 mt-0.5">
                         បង្ហាញរាល់ Comment របស់អតិថិជន និងការឆ្លើយតបរបស់ Bot ភ្លាមៗ {lastScannedTime && `(ស្កេនចុងក្រោយ៖ ម៉ោង ${lastScannedTime})`}
                       </p>
                     </div>
@@ -2187,9 +2238,9 @@ export default function VSTAssistantApp() {
                     <button
                       onClick={runScanner}
                       disabled={isScanning}
-                      className="flex items-center gap-2 rounded-xl border border-[#223047] bg-[#162033] px-3.5 py-2 text-xs font-semibold text-[#F8FAFC] transition hover:border-[#38BDF8] hover:text-[#38BDF8] disabled:opacity-50"
+                      className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-750 px-3.5 py-2 text-xs font-semibold text-white shadow-md hover:border-cyan-400 hover:scale-[1.02] active:scale-95 transition-all duration-200 disabled:opacity-50"
                     >
-                      <RefreshCw className={`h-3.5 w-3.5 ${isScanning ? "animate-spin text-[#38BDF8]" : ""}`} />
+                      <RefreshCw className={`h-3.5 w-3.5 ${isScanning ? "animate-spin text-cyan-400" : ""}`} />
                       <span>{isScanning ? "កំពុងស្កេន..." : "ស្កេនទិន្នន័យឥឡូវនេះ"}</span>
                     </button>
                   </div>
@@ -2199,11 +2250,11 @@ export default function VSTAssistantApp() {
                 <div className="mt-5 space-y-3">
                   {activities.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 text-center">
-                      <RefreshCw className="h-7 w-7 text-[#38BDF8]/40 animate-spin mb-3" />
+                      <RefreshCw className="h-8 w-8 text-cyan-400 animate-spin mb-3" />
                       <p className="text-xs font-medium text-slate-300">
                         កំពុងទាញយក Comment ផ្ទាល់ពី Facebook Page Kidney Pro...
                       </p>
-                      <p className="text-[11px] text-[#94A3B8] mt-1">
+                      <p className="text-[11px] text-slate-500 mt-1">
                         រាល់ Comment ថ្មីៗនឹងលោតឡើងនៅត្រង់នេះដោយស្វ័យប្រវត្តិ
                       </p>
                     </div>
@@ -2211,12 +2262,12 @@ export default function VSTAssistantApp() {
                     activities.map((act, idx) => (
                       <div
                         key={act.commentId || idx}
-                        className="rounded-xl border border-[#223047] bg-[#0B1220]/50 p-4 transition hover:border-[#334155] hover:bg-[#162033]"
+                        className="rounded-2xl border border-slate-800/80 bg-slate-900/50 p-4.5 transition-all duration-200 hover:border-cyan-500/40 hover:bg-slate-850 hover:shadow-md"
                       >
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           {/* User info & comment */}
                           <div className="flex items-start gap-3 flex-1 min-w-[280px]">
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-[#38BDF8] to-blue-600 font-bold text-white text-xs shadow-xs">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 font-bold text-white text-xs shadow-md shadow-cyan-500/20">
                               {(act.senderName && act.senderName !== "Customer" ? act.senderName.charAt(0) : "អ")}
                             </div>
                             <div className="space-y-1.5 flex-1">
@@ -2225,11 +2276,11 @@ export default function VSTAssistantApp() {
                                   {act.senderName && act.senderName !== "Customer" ? act.senderName : "អតិថិជន Facebook"}
                                 </span>
                                 {act.senderId && (
-                                  <span className="text-[10px] text-[#38BDF8] font-mono bg-[#162033] px-1.5 py-0.5 rounded border border-[#223047]">
+                                  <span className="text-[10px] text-cyan-300 font-mono bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-800/40">
                                     ID: {act.senderId}
                                   </span>
                                 )}
-                                <span className="text-[10px] text-[#94A3B8]">
+                                <span className="text-[10px] text-slate-400">
                                   {new Date(act.createdTime).toLocaleString("km-KH", {
                                     month: "short",
                                     day: "numeric",
@@ -2240,19 +2291,19 @@ export default function VSTAssistantApp() {
                               </div>
 
                               {/* User's comment text */}
-                              <div className="rounded-xl bg-[#080D17] p-2.5 text-xs text-slate-200 border border-[#223047]">
-                                <span className="text-[#94A3B8] font-medium">មតិយោបល់៖ </span>
+                              <div className="rounded-xl bg-[#080D17] p-2.5 text-xs text-slate-200 border border-slate-800">
+                                <span className="text-slate-400 font-medium">មតិយោបល់៖ </span>
                                 <span className="font-medium text-slate-100">"{act.message}"</span>
                               </div>
 
                               {/* Bot Reply text */}
                               {act.replyText && (
-                                <div className="mt-2 rounded-xl bg-[#162033] p-2.5 text-xs text-slate-200 border border-[#223047]">
-                                  <div className="flex items-center gap-1.5 text-[#38BDF8] font-semibold mb-1 text-[11px]">
+                                <div className="mt-2 rounded-xl bg-[#111c2e] p-2.5 text-xs text-slate-200 border border-cyan-500/30">
+                                  <div className="flex items-center gap-1.5 text-cyan-400 font-semibold mb-1 text-[11px]">
                                     <Bot className="h-3.5 w-3.5" />
                                     <span>ការឆ្លើយតបរបស់ Bot ៖</span>
                                   </div>
-                                  <p className="whitespace-pre-line leading-relaxed text-slate-300 text-[11px]">
+                                  <p className="whitespace-pre-line leading-relaxed text-slate-200 text-[11px]">
                                     {act.replyText}
                                   </p>
                                 </div>
@@ -2272,7 +2323,7 @@ export default function VSTAssistantApp() {
                                 href={act.permalink}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="flex items-center gap-1 text-[11px] text-[#38BDF8] hover:underline mt-1"
+                                className="flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 hover:underline mt-1 transition"
                               >
                                 <span>មើលលើ Facebook</span>
                                 <ExternalLink className="h-3 w-3" />
