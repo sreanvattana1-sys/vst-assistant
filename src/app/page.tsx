@@ -97,29 +97,7 @@ export default function VSTAssistantApp() {
       accessToken?: string;
       aiReplyEnabled?: boolean;
     }>
-  >([
-    {
-      id: "955747057621489",
-      name: "Kidney Pro ឃីដនី ប្រូ",
-      category: "សុខភាព & សម្រស់ (Health/Beauty)",
-      ownerName: "VST Super Admin",
-      isActive: true,
-    },
-    {
-      id: "101267342561819",
-      name: "Emmi អេមមី",
-      category: "ផលិតផលនារី (Women Care)",
-      ownerName: "VST Super Admin",
-      isActive: true,
-    },
-    {
-      id: "985673367962860",
-      name: "Emmi By CEO",
-      category: "អាជីវកម្មផ្លូវការ (Official Brand)",
-      ownerName: "VST Super Admin",
-      isActive: true,
-    },
-  ]);
+  >([]);
 
   const [pageOwnerFilter, setPageOwnerFilter] = useState("all");
   const [isFbConnecting, setIsFbConnecting] = useState(false);
@@ -148,21 +126,41 @@ export default function VSTAssistantApp() {
     }
   }, []);
 
-  const fetchPages = async () => {
+  const fetchPages = async (userObj?: any) => {
     try {
-      const res = await fetch("/api/pages");
+      const u = userObj || currentUser;
+      if (!u || !isLoggedIn) {
+        setManagedPages([]);
+        return;
+      }
+      const userIsAdmin =
+        u?.role === "owner" ||
+        u?.loginType === "admin" ||
+        u?.email === "admin@vst.com" ||
+        u?.name === "VST Super Admin";
+
+      const queryParams = userIsAdmin
+        ? "?isAdmin=true"
+        : `?owner=${encodeURIComponent(u?.name || u?.email || "")}&userId=${encodeURIComponent(u?.id || "")}`;
+
+      const res = await fetch(`/api/pages${queryParams}`);
       const data = await res.json();
       if (data.pages && Array.isArray(data.pages)) {
         setManagedPages(data.pages);
+      } else {
+        setManagedPages([]);
       }
     } catch (e) {
       console.error("Failed to load pages:", e);
+      setManagedPages([]);
     }
   };
 
   useEffect(() => {
-    fetchPages();
-  }, []);
+    if (isLoggedIn) {
+      fetchPages(currentUser);
+    }
+  }, [isLoggedIn, currentUser]);
 
   // Guard: if member / non-admin user is on admin or ai_training tab, redirect to dashboard
   useEffect(() => {
@@ -170,13 +168,6 @@ export default function VSTAssistantApp() {
       setActiveTab("dashboard");
     }
   }, [isAdmin, activeTab]);
-
-  // When Super Admin logs in, fetch all platform & member pages
-  useEffect(() => {
-    if (isLoggedIn && isAdmin) {
-      fetchPages();
-    }
-  }, [isLoggedIn, isAdmin]);
 
   useEffect(() => {
     try {
@@ -382,7 +373,8 @@ export default function VSTAssistantApp() {
       };
 
       setCurrentUser(newUser as any);
-      localStorage.setItem("vst_admin_session", JSON.stringify({ user: newUser, token: "usr_" + Date.now() }));
+      setManagedPages([]);
+      localStorage.setItem("vst_admin_session", JSON.stringify({ user: newUser, token: "usr_" + Date.now(), pages: [] }));
       setIsLoggedIn(true);
       alert("ចុះឈ្មោះជោគជ័យ! សូមស្វាគមន៍មកកាន់ VST Assistant 🎉");
     } catch (err: any) {
@@ -896,12 +888,17 @@ export default function VSTAssistantApp() {
         aiReplyEnabled: true,
       };
 
-      await fetch("/api/bot-settings", {
+      await fetch("/api/pages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          action: "connect",
           pageId: newPage.id,
-          is_active: true,
+          name: newPage.name,
+          category: newPage.category,
+          ownerName: currentUser.name || "VST Member",
+          userId: (currentUser as any).id || (currentUser as any).email || "",
+          accessToken: newPage.accessToken,
         }),
       });
 
@@ -1590,6 +1587,31 @@ export default function VSTAssistantApp() {
     );
   }
 
+  const displayedPages = managedPages.filter((page) => {
+    if (!isAdmin) {
+      const curName = currentUser.name?.toLowerCase() || "";
+      const curEmail = currentUser.email?.toLowerCase() || "";
+      const curId = (currentUser as any).id || "";
+      const pOwner = page.ownerName?.toLowerCase() || "";
+      return (
+        (curName && pOwner.includes(curName)) ||
+        (curEmail && pOwner.includes(curEmail)) ||
+        ((page as any).userId && (page as any).userId === curId) ||
+        ((page as any).ownerId && (page as any).ownerId === curId)
+      );
+    }
+    if (pageOwnerFilter === "all") return true;
+    if (pageOwnerFilter === "admin") {
+      return (
+        !page.ownerName ||
+        page.ownerName.toLowerCase().includes("admin")
+      );
+    }
+    return page.ownerName
+      ?.toLowerCase()
+      .includes(pageOwnerFilter.toLowerCase());
+  });
+
   // 2. MAIN APPLICATION WORKSPACE
   return (
     <div className="flex min-h-screen bg-[#080D17] text-[#F8FAFC]">
@@ -2009,16 +2031,16 @@ export default function VSTAssistantApp() {
 
                   <div className="mt-3">
                     <div className="text-3xl font-black tracking-tight bg-gradient-to-r from-white via-cyan-100 to-cyan-400 bg-clip-text text-transparent">
-                      {liveCommentCount > 0 ? liveCommentCount.toString() : "148"}
+                      {managedPages.length > 0 ? (liveCommentCount > 0 ? liveCommentCount.toString() : "148") : "0"}
                     </div>
                   </div>
 
                   <div className="mt-3 flex items-center justify-between pt-2.5 border-t border-cyan-500/20 text-[11px]">
                     <span className="text-cyan-300 font-medium">
-                      {liveCommentCount > 0 ? `${liveCommentCount} comments ស្កេនបាន` : "+24% ធៀបម្សិលមិញ"}
+                      {managedPages.length > 0 ? (liveCommentCount > 0 ? `${liveCommentCount} comments ស្កេនបាន` : "+24% ធៀបម្សិលមិញ") : "មិនទាន់មាន Page"}
                     </span>
-                    <span className="px-2 py-0.5 rounded-full border border-cyan-500/30 bg-cyan-500/10 text-[10px] font-semibold text-cyan-300">
-                      ● ដំណើរការល្អ
+                    <span className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold ${managedPages.length > 0 ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-300" : "border-slate-700 bg-slate-800 text-slate-400"}`}>
+                      {managedPages.length > 0 ? "● ដំណើរការល្អ" : "○ រង់ចាំភ្ជាប់"}
                     </span>
                   </div>
                 </div>
@@ -2035,14 +2057,14 @@ export default function VSTAssistantApp() {
 
                   <div className="mt-3">
                     <div className="text-3xl font-black tracking-tight bg-gradient-to-r from-white via-purple-100 to-purple-400 bg-clip-text text-transparent">
-                      92
+                      {managedPages.length > 0 ? "92" : "0"}
                     </div>
                   </div>
 
                   <div className="mt-3 flex items-center justify-between pt-2.5 border-t border-purple-500/20 text-[11px]">
-                    <span className="text-purple-300 font-medium">+15% ធៀបម្សិលមិញ</span>
-                    <span className="px-2 py-0.5 rounded-full border border-purple-500/30 bg-purple-500/10 text-[10px] font-semibold text-purple-300">
-                      ● បញ្ជូនជោគជ័យ
+                    <span className="text-purple-300 font-medium">{managedPages.length > 0 ? "+15% ធៀបម្សិលមិញ" : "មិនទាន់មាន Page"}</span>
+                    <span className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold ${managedPages.length > 0 ? "border-purple-500/30 bg-purple-500/10 text-purple-300" : "border-slate-700 bg-slate-800 text-slate-400"}`}>
+                      {managedPages.length > 0 ? "● បញ្ជូនជោគជ័យ" : "○ រង់ចាំភ្ជាប់"}
                     </span>
                   </div>
                 </div>
@@ -2059,14 +2081,14 @@ export default function VSTAssistantApp() {
 
                   <div className="mt-3">
                     <div className="text-3xl font-black tracking-tight bg-gradient-to-r from-white via-amber-100 to-amber-400 bg-clip-text text-transparent">
-                      35
+                      {managedPages.length > 0 ? "35" : "0"}
                     </div>
                   </div>
 
                   <div className="mt-3 flex items-center justify-between pt-2.5 border-t border-amber-500/20 text-[11px]">
-                    <span className="text-amber-300 font-medium">leads ថ្មីថ្ងៃនេះ</span>
-                    <span className="px-2 py-0.5 rounded-full border border-amber-500/30 bg-amber-500/10 text-[10px] font-semibold text-amber-300">
-                      ● កើនឡើង
+                    <span className="text-amber-300 font-medium">{managedPages.length > 0 ? "leads ថ្មីថ្ងៃនេះ" : "មិនទាន់មាន Page"}</span>
+                    <span className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold ${managedPages.length > 0 ? "border-amber-500/30 bg-amber-500/10 text-amber-300" : "border-slate-700 bg-slate-800 text-slate-400"}`}>
+                      {managedPages.length > 0 ? "● កើនឡើង" : "○ រង់ចាំភ្ជាប់"}
                     </span>
                   </div>
                 </div>
@@ -2083,14 +2105,14 @@ export default function VSTAssistantApp() {
 
                   <div className="mt-3">
                     <div className="text-3xl font-black tracking-tight bg-gradient-to-r from-white via-emerald-100 to-emerald-400 bg-clip-text text-transparent">
-                      18
+                      {managedPages.length > 0 ? "18" : "0"}
                     </div>
                   </div>
 
                   <div className="mt-3 flex items-center justify-between pt-2.5 border-t border-emerald-500/20 text-[11px]">
-                    <span className="text-emerald-300 font-medium">+5 orders ថ្ងៃនេះ</span>
-                    <span className="px-2 py-0.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-[10px] font-semibold text-emerald-300">
-                      ● បិទការលក់
+                    <span className="text-emerald-300 font-medium">{managedPages.length > 0 ? "+5 orders ថ្ងៃនេះ" : "មិនទាន់មាន Page"}</span>
+                    <span className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold ${managedPages.length > 0 ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-slate-700 bg-slate-800 text-slate-400"}`}>
+                      {managedPages.length > 0 ? "● បិទការលក់" : "○ រង់ចាំភ្ជាប់"}
                     </span>
                   </div>
                 </div>
@@ -2120,51 +2142,68 @@ export default function VSTAssistantApp() {
                   </div>
 
                   <div className="space-y-2.5">
-                    {[
-                      {
-                        name: "Kidney Pro ឃីដនី ប្រូ (Official Connected)",
-                        followers: "Active Live Page",
-                        commentsToday: 12,
-                        status: "Active",
-                      },
-                      {
-                        name: "Emmi អេមមី",
-                        followers: "Active Live Page",
-                        commentsToday: 24,
-                        status: "Active",
-                      },
-                      {
-                        name: "Emmi By CEO",
-                        followers: "Active Live Page",
-                        commentsToday: 18,
-                        status: "Active",
-                      },
-                    ].map((p, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center justify-between rounded-2xl border border-slate-800/80 bg-slate-900/60 p-3.5 transition-all duration-200 hover:border-cyan-500/40 hover:bg-slate-800/60 hover:scale-[1.01] hover:shadow-md hover:shadow-cyan-950/40"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 font-bold text-white text-xs shadow-md shadow-cyan-500/25">
-                            FP
-                          </div>
-                          <div>
-                            <div className="font-semibold text-xs text-[#F8FAFC]">{p.name}</div>
-                            <div className="text-[11px] text-slate-400">{p.followers}</div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-5">
-                          <div className="text-right">
-                            <div className="text-[11px] text-slate-400">Comments ថ្ងៃនេះ</div>
-                            <div className="text-xs font-bold text-cyan-300">{p.commentsToday}</div>
-                          </div>
-                          <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-400 border border-emerald-500/20">
-                            ● ដំណើរការល្អ
-                          </span>
-                        </div>
+                    {managedPages.length === 0 ? (
+                      <div className="py-8 text-center rounded-2xl border border-dashed border-slate-800 bg-slate-900/40 p-6">
+                        <FileText className="h-9 w-9 text-slate-500 mx-auto mb-2" />
+                        <h4 className="text-xs font-bold text-slate-200">
+                          {lang === "km" ? "មិនទាន់មាន Facebook Page នៅឡើយទេ" : "No Facebook Pages connected"}
+                        </h4>
+                        <p className="text-[11px] text-slate-400 mt-1 max-w-sm mx-auto">
+                          {lang === "km"
+                            ? "សូមភ្ជាប់ Facebook Page របស់អ្នកដើម្បីចាប់ផ្តើមប្រើប្រាស់ Bot ឆ្លើយតប Comment & Inbox ស្វ័យប្រវត្តិ"
+                            : "Connect your Facebook Page to start auto-replying to comments and messages."}
+                        </p>
+                        <button
+                          onClick={() => setActiveTab("pages")}
+                          className="mt-3.5 inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 px-3.5 py-2 text-xs font-bold text-white shadow-md hover:from-cyan-400 hover:to-blue-500 transition"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          <span>{lang === "km" ? "ភ្ជាប់ Facebook Page ឥឡូវនេះ" : "Connect Page Now"}</span>
+                        </button>
                       </div>
-                    ))}
+                    ) : (
+                      managedPages.map((p, i) => (
+                        <div
+                          key={p.id || i}
+                          className="flex items-center justify-between rounded-2xl border border-slate-800/80 bg-slate-900/60 p-3.5 transition-all duration-200 hover:border-cyan-500/40 hover:bg-slate-800/60 hover:scale-[1.01] hover:shadow-md hover:shadow-cyan-950/40"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 font-bold text-white text-xs shadow-md shadow-cyan-500/25 overflow-hidden">
+                              {p.picture ? (
+                                <img src={p.picture} alt="" className="h-full w-full object-cover" />
+                              ) : (
+                                p.name.charAt(0)
+                              )}
+                            </div>
+                            <div>
+                              <div className="font-semibold text-xs text-[#F8FAFC] flex items-center gap-2">
+                                <span>{p.name}</span>
+                                {isAdmin && p.ownerName && (
+                                  <span className="text-[10px] text-cyan-400 bg-cyan-500/10 px-1.5 py-0.2 rounded border border-cyan-500/20 font-normal">
+                                    👤 {p.ownerName}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-400">
+                                {p.category || "Active Connected Page"}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <span
+                              className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold border ${
+                                p.isActive
+                                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                  : "bg-slate-700/30 text-slate-400 border-slate-700/40"
+                              }`}
+                            >
+                              {p.isActive ? "● ដំណើរការល្អ" : "○ បានផ្អាក"}
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
 
@@ -2799,21 +2838,35 @@ export default function VSTAssistantApp() {
               )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {managedPages
-                  .filter((page) => {
-                    if (!isAdmin) return true;
-                    if (pageOwnerFilter === "all") return true;
-                    if (pageOwnerFilter === "admin") {
-                      return (
-                        !page.ownerName ||
-                        page.ownerName.toLowerCase().includes("admin")
-                      );
-                    }
-                    return page.ownerName
-                      ?.toLowerCase()
-                      .includes(pageOwnerFilter.toLowerCase());
-                  })
-                  .map((page, i) => (
+                {displayedPages.length === 0 ? (
+                  <div className="col-span-full py-16 text-center rounded-2xl border border-dashed border-[#223047] bg-[#111827]/60 p-8">
+                    <FileText className="h-12 w-12 text-slate-500 mx-auto mb-3" />
+                    <h4 className="text-sm font-bold text-[#F8FAFC]">
+                      {lang === "km" ? "មិនទាន់មាន Facebook Page នៅឡើយទេ" : "No Facebook Pages Connected"}
+                    </h4>
+                    <p className="text-xs text-[#94A3B8] mt-1.5 max-w-md mx-auto leading-relaxed">
+                      {isAdmin
+                        ? lang === "km"
+                          ? "មិនមាន Page ណាមួយត្រូវនឹងការស្វែងរកនេះទេ។"
+                          : "No pages match the selected filter."
+                        : lang === "km"
+                        ? "គណនីរបស់អ្នកមិនទាន់មាន Facebook Page ទេ។ សូមចុចប៊ូតុងខាងលើ «🔗 ភ្ជាប់ Facebook Admin Page» ដើម្បីភ្ជាប់ Page របស់អ្នក និងចាប់ផ្តើមប្រើ Bot!"
+                        : "You haven't connected any Facebook Pages yet. Click 'Connect Facebook Admin Page' above to link your page!"}
+                    </p>
+                    {!isAdmin && (
+                      <div className="mt-4 flex items-center justify-center gap-3">
+                        <button
+                          onClick={() => setIsConnectFbModalOpen(true)}
+                          className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-md hover:from-cyan-400 hover:to-blue-500 transition"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          <span>{lang === "km" ? "🔗 ភ្ជាប់ Facebook Page ឥឡូវនេះ" : "Connect Facebook Page"}</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  displayedPages.map((page, i) => (
                   <div
                     key={page.id || i}
                     className="rounded-2xl border border-[#223047] bg-[#111827] p-5 flex flex-col justify-between transition hover:border-[#334155] hover:bg-[#162033] shadow-xs"
@@ -2944,7 +2997,8 @@ export default function VSTAssistantApp() {
                       </a>
                     </div>
                   </div>
-                ))}
+                ))
+              )}
               </div>
 
               {/* 5. Connect Facebook Admin Page Modal */}
@@ -3317,7 +3371,7 @@ export default function VSTAssistantApp() {
                               <td className="p-3.5">
                                 <div className="flex flex-col gap-1">
                                   <span className="font-semibold text-cyan-400">
-                                    {m.pagesCount || (m.pages ? m.pages.length : 1)}{" "}
+                                    {typeof m.pagesCount === "number" ? m.pagesCount : (m.pages ? m.pages.length : 0)}{" "}
                                     {lang === "km" ? "ផេក" : "Pages"}
                                   </span>
                                   {m.pages && Array.isArray(m.pages) && (

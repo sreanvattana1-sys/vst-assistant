@@ -29,8 +29,10 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const owner = searchParams.get("owner");
+    const isAdmin = searchParams.get("isAdmin") === "true";
+    const userId = searchParams.get("userId");
 
-    // 1. Fetch bot_settings statuses & member pages
+    // 1. Fetch bot_settings statuses & member pages from Supabase
     const { data: settingsData } = await supabase
       .from("bot_settings")
       .select("id, is_active, dm_template");
@@ -41,7 +43,7 @@ export async function GET(req: NextRequest) {
     >();
     const memberPagesMap = new Map<
       string,
-      { id: string; name: string; ownerName: string; category?: string }
+      { id: string; name: string; ownerName: string; category?: string; userId?: string }
     >();
 
     if (Array.isArray(settingsData)) {
@@ -56,8 +58,9 @@ export async function GET(req: NextRequest) {
                     memberPagesMap.set(p.id, {
                       id: p.id,
                       name: p.name,
-                      ownerName: m.name || "Member",
-                      category: "Facebook Page (Member)",
+                      ownerName: m.name || m.email || "Member",
+                      userId: m.id || "",
+                      category: p.category || "Facebook Page (Member)",
                     });
                   });
                 }
@@ -73,20 +76,22 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Merge default pages and all member pages
+    // Build list of pages
     const pagesMap = new Map<string, any>();
 
-    // Add admin pages
-    DEFAULT_PAGES.forEach((p) => {
-      const pageStatus = statusMap.get(p.id);
-      pagesMap.set(p.id, {
-        ...p,
-        isActive: pageStatus ? pageStatus.isActive : p.isActive,
-        disabledByAdmin: pageStatus ? pageStatus.disabledByAdmin : false,
+    // 2. Add Super Admin pages ONLY if user is Admin or specifically requesting Admin pages
+    if (isAdmin || (owner && owner.toLowerCase().includes("admin"))) {
+      DEFAULT_PAGES.forEach((p) => {
+        const pageStatus = statusMap.get(p.id);
+        pagesMap.set(p.id, {
+          ...p,
+          isActive: pageStatus ? pageStatus.isActive : p.isActive,
+          disabledByAdmin: pageStatus ? pageStatus.disabledByAdmin : false,
+        });
       });
-    });
+    }
 
-    // Add member pages
+    // 3. Add member pages
     memberPagesMap.forEach((p, pageId) => {
       const pageStatus = statusMap.get(pageId);
       if (pagesMap.has(pageId)) {
@@ -98,6 +103,7 @@ export async function GET(req: NextRequest) {
           name: p.name,
           category: p.category || "Facebook Page (Member)",
           ownerName: p.ownerName,
+          userId: p.userId,
           isActive: pageStatus ? pageStatus.isActive : true,
           disabledByAdmin: pageStatus ? pageStatus.disabledByAdmin : false,
         });
@@ -106,8 +112,24 @@ export async function GET(req: NextRequest) {
 
     let allPages = Array.from(pagesMap.values());
 
-    // Filter by owner if requested
-    if (owner) {
+    // 4. Strict isolation: If NOT admin, user ONLY sees their own pages
+    if (!isAdmin) {
+      if (!owner && !userId) {
+        // If regular user has no identifier or hasn't connected anything, return empty list!
+        return NextResponse.json({
+          success: true,
+          pages: [],
+          totalPages: 0,
+        });
+      }
+
+      allPages = allPages.filter((p) => {
+        const matchOwner = owner && p.ownerName?.toLowerCase().includes(owner.toLowerCase());
+        const matchUser = userId && p.userId && p.userId === userId;
+        return matchOwner || matchUser;
+      });
+    } else if (owner && owner !== "all") {
+      // Admin filtering by specific owner
       allPages = allPages.filter((p) =>
         p.ownerName?.toLowerCase().includes(owner.toLowerCase())
       );
@@ -122,16 +144,120 @@ export async function GET(req: NextRequest) {
     console.error("GET /api/pages error:", err);
     return NextResponse.json({
       success: true,
-      pages: DEFAULT_PAGES,
-      totalPages: DEFAULT_PAGES.length,
+      pages: [],
+      totalPages: 0,
     });
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const { pageId, isActive, isAdmin } = await req.json();
+    const body = await req.json();
+    const { action, pageId, isActive, isAdmin, name, category, ownerName, userId, accessToken } = body;
 
+    // A. Connect / Register a New Page (Manual or FB)
+    if (action === "connect" || (pageId && name && ownerName)) {
+      if (!pageId || !name) {
+        return NextResponse.json(
+          { success: false, error: "Missing pageId or page name" },
+          { status: 400 }
+        );
+      }
+
+      // 1. Fetch current vst_members from bot_settings
+      const { data: memberData } = await supabase
+        .from("bot_settings")
+        .select("dm_template")
+        .eq("id", "vst_members")
+        .maybeSingle();
+
+      let membersList: any[] = [];
+      if (memberData && memberData.dm_template) {
+        try {
+          membersList = JSON.parse(memberData.dm_template);
+        } catch {}
+      }
+
+      const targetOwner = ownerName || "VST Member";
+      const targetUserId = userId || `user_${Date.now()}`;
+
+      let mIndex = membersList.findIndex(
+        (m: any) =>
+          (userId && m.id === userId) ||
+          (m.name && m.name.toLowerCase() === targetOwner.toLowerCase())
+      );
+
+      const newPageObj = {
+        id: String(pageId).trim(),
+        name: String(name).trim(),
+        category: category || "Facebook Connected Page",
+        accessToken: accessToken || undefined,
+        isActive: true,
+      };
+
+      if (mIndex >= 0) {
+        const existingMember = membersList[mIndex];
+        const existingPages = Array.isArray(existingMember.pages) ? existingMember.pages : [];
+        const pageIdx = existingPages.findIndex((p: any) => p.id === newPageObj.id);
+        if (pageIdx >= 0) {
+          existingPages[pageIdx] = { ...existingPages[pageIdx], ...newPageObj };
+        } else {
+          existingPages.push(newPageObj);
+        }
+        existingMember.pages = existingPages;
+        existingMember.pagesCount = existingPages.length;
+        existingMember.lastLogin = new Date().toISOString();
+        membersList[mIndex] = existingMember;
+      } else {
+        // Create new member entry
+        membersList.push({
+          id: targetUserId,
+          name: targetOwner,
+          email: targetOwner.includes("@") ? targetOwner : null,
+          role: "Member",
+          loginType: "Custom / Manual",
+          pagesCount: 1,
+          pages: [newPageObj],
+          lastLogin: new Date().toISOString(),
+          status: "Active",
+          botEnabled: true,
+        });
+      }
+
+      // Save updated members with new page into Supabase
+      await supabase.from("bot_settings").upsert({
+        id: "vst_members",
+        is_active: true,
+        dm_template: JSON.stringify(membersList),
+        updated_at: new Date().toISOString(),
+      });
+
+      // Also upsert default bot_settings for this new page
+      await supabase.from("bot_settings").upsert(
+        {
+          id: newPageObj.id,
+          is_active: true,
+          reply_templates: [
+            `សួស្ដី {name}! 😊 អរគុណសម្រាប់ការទាក់ទងមកកាន់ទំព័រ ${newPageObj.name}។ យើងខ្ញុំបានផ្ញើព័ត៌មានលម្អិតជូនក្នុង Inbox ហើយបង 💬✨`,
+          ],
+          auto_dm_enabled: true,
+          dm_template: `សូមស្វាគមន៍មកកាន់ទំព័រ ${newPageObj.name} 🌸! តើបងមានចម្ងល់ ឬចង់ដឹងតម្លៃផលិតផលណាដែរ? ខ្ញុំអាចជួយផ្ដល់ការប្រឹក្សាជូនភ្លាមៗណា!`,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "id" }
+      );
+
+      return NextResponse.json({
+        success: true,
+        page: {
+          ...newPageObj,
+          ownerName: targetOwner,
+          isActive: true,
+        },
+      });
+    }
+
+    // B. Toggle Page Active Status
     if (!pageId || typeof isActive !== "boolean") {
       return NextResponse.json(
         { success: false, error: "Missing pageId or isActive" },
