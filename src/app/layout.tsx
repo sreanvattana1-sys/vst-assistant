@@ -29,7 +29,7 @@ export default function RootLayout({
   return (
     <html lang="km">
       <body
-        className={`${notoSansKhmer.variable} ${inter.variable} font-sans antialiased bg-[#070e1b] text-slate-100 min-h-screen selection:bg-cyan-500 selection:text-white`}
+        className={`${notoSansKhmer.variable} ${inter.variable} font-sans antialiased bg-[#080D17] text-[#F8FAFC] min-h-screen selection:bg-[#38BDF8] selection:text-[#080D17]`}
       >
         {children}
       </body>
