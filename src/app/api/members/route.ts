@@ -154,19 +154,22 @@ export async function POST(req: NextRequest) {
       membersList[targetIdx].status = botEnabled ? "Active" : "Disabled";
       updatedMember = membersList[targetIdx];
     } else {
+      const isSamUser = memberName?.toLowerCase().includes("sam");
       const newEntry = {
-        id: memberId || "fb_sam_moto",
-        name: memberName || "Sam Moto",
-        role: "Member / Tester",
-        loginType: "Facebook OAuth",
-        pagesCount: 5,
-        pages: [
-          { name: "គុណភាពតម្រងនោម", id: "827063453815073" },
-          { name: "អេមមី សុខភាពស្រ្តី", id: "1039779202551647" },
-          { name: "Emmi Cambodia", id: "928036717066754" },
-          { name: "Emmi By CEO", id: "985673367962860" },
-          { name: "Emmi អេមមី", id: "101267342561819" },
-        ],
+        id: memberId || `member_${Date.now()}`,
+        name: memberName || "Member",
+        role: "Member",
+        loginType: "Email / System",
+        pagesCount: isSamUser ? 5 : 0,
+        pages: isSamUser
+          ? [
+              { name: "គុណភាពតម្រងនោម", id: "827063453815073" },
+              { name: "អេមមី សុខភាពស្រ្តី", id: "1039779202551647" },
+              { name: "Emmi Cambodia", id: "928036717066754" },
+              { name: "Emmi By CEO", id: "985673367962860" },
+              { name: "Emmi អេមមី", id: "101267342561819" },
+            ]
+          : [],
         lastLogin: new Date().toISOString(),
         status: botEnabled ? "Active" : "Disabled",
         botEnabled: botEnabled,
