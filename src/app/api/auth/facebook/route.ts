@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 
 export async function POST(req: NextRequest) {
   try {
-    const { accessToken } = await req.json();
+    const { accessToken, currentUserId, currentUserName } = await req.json();
 
     if (!accessToken) {
       return NextResponse.json(
@@ -114,38 +114,59 @@ export async function POST(req: NextRequest) {
         }
 
         const existingIndex = membersList.findIndex(
-          (m: any) => m.id === userData.id || m.name === userData.name
+          (m: any) =>
+            (currentUserId && (m.id === currentUserId || String(m.id) === String(currentUserId))) ||
+            (currentUserName && m.name?.toLowerCase() === currentUserName.toLowerCase()) ||
+            m.id === userData.id ||
+            m.name === userData.name
         );
+
+        let finalUser: any = null;
 
         if (existingIndex >= 0) {
           const existing = membersList[existingIndex];
           userStatus = existing.status || "Active";
           userBotEnabled = existing.botEnabled !== false && existing.status !== "Disabled";
-        }
 
-        const memberEntry = {
-          id: userData.id,
-          name: userData.name,
-          email: userData.email || null,
-          picture: userData.picture?.data?.url || null,
-          role: "Member / Tester",
-          loginType: "Facebook OAuth",
-          pagesCount: formattedPages.length,
-          pages: formattedPages.map((p: any) => ({
-            id: p.id,
-            name: p.name,
-            category: p.category,
-            accessToken: p.accessToken,
-          })),
-          lastLogin: new Date().toISOString(),
-          status: userStatus,
-          botEnabled: userBotEnabled,
-        };
-
-        if (existingIndex >= 0) {
-          membersList[existingIndex] = { ...membersList[existingIndex], ...memberEntry };
+          membersList[existingIndex] = {
+            ...existing,
+            facebookId: userData.id,
+            facebookName: userData.name,
+            picture: userData.picture?.data?.url || existing.picture || null,
+            loginType: existing.loginType ? `${existing.loginType} + FB` : "Facebook Connected",
+            pagesCount: formattedPages.length,
+            pages: formattedPages.map((p: any) => ({
+              id: p.id,
+              name: p.name,
+              category: p.category,
+              accessToken: p.accessToken,
+            })),
+            lastLogin: new Date().toISOString(),
+            status: userStatus,
+            botEnabled: userBotEnabled,
+          };
+          finalUser = membersList[existingIndex];
         } else {
+          const memberEntry = {
+            id: userData.id,
+            name: userData.name,
+            email: userData.email || null,
+            picture: userData.picture?.data?.url || null,
+            role: "Member / Tester",
+            loginType: "Facebook OAuth",
+            pagesCount: formattedPages.length,
+            pages: formattedPages.map((p: any) => ({
+              id: p.id,
+              name: p.name,
+              category: p.category,
+              accessToken: p.accessToken,
+            })),
+            lastLogin: new Date().toISOString(),
+            status: userStatus,
+            botEnabled: userBotEnabled,
+          };
           membersList.push(memberEntry);
+          finalUser = memberEntry;
         }
 
         await supabase.from("bot_settings").upsert({
@@ -153,6 +174,13 @@ export async function POST(req: NextRequest) {
           is_active: true,
           dm_template: JSON.stringify(membersList),
           updated_at: new Date().toISOString(),
+        });
+
+        return NextResponse.json({
+          success: true,
+          user: finalUser,
+          pages: formattedPages,
+          totalPages: formattedPages.length,
         });
       } catch (memErr) {
         console.error("Member tracking error:", memErr);

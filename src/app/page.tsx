@@ -218,11 +218,22 @@ export default function VSTAssistantApp() {
 
         if (fbToken) {
           setIsFbConnecting(true);
+          const fbConnectUserId = sessionStorage.getItem("vst_fb_connect_user_id") || undefined;
+          const fbConnectUserName = sessionStorage.getItem("vst_fb_connect_user_name") || undefined;
+          try {
+            sessionStorage.removeItem("vst_fb_connect_user_id");
+            sessionStorage.removeItem("vst_fb_connect_user_name");
+          } catch {}
+
           window.history.replaceState(null, "", window.location.pathname);
           fetch("/api/auth/facebook", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ accessToken: fbToken }),
+            body: JSON.stringify({
+              accessToken: fbToken,
+              currentUserId: fbConnectUserId,
+              currentUserName: fbConnectUserName,
+            }),
           })
             .then((res) => res.json())
             .then((data) => {
@@ -243,7 +254,11 @@ export default function VSTAssistantApp() {
               setIsFbConnecting(false);
             });
         } else if (fbError) {
-          setLoginError(fbError);
+          setLoginError(
+            lang === "km"
+              ? "មិនអាចភ្ជាប់ Facebook បានទេ។ ប្រសិនបើ Facebook របស់អ្នកមិនទាន់បាន Add ក្នុង Developer App សូមប្រើវិធី '🔗 ភ្ជាប់ Facebook Admin Page' -> 'ភ្ជាប់ដោយផ្ទាល់ (Manual)' ខាងក្រោម!"
+              : fbError
+          );
           window.history.replaceState(null, "", window.location.pathname);
         }
       }
@@ -272,16 +287,19 @@ export default function VSTAssistantApp() {
       const data = await res.json();
 
       if (data.success && data.token) {
-        const adminUser = {
+        const loggedUser = data.user || {
           name: "VST Super Admin",
           email: loginEmail || "admin@vst.com",
           role: "owner",
           loginType: "admin" as const,
         };
-        setCurrentUser(adminUser);
+        setCurrentUser(loggedUser);
+        if (data.pages && Array.isArray(data.pages)) {
+          setManagedPages(data.pages);
+        }
         const sessionToStore = {
           ...data,
-          user: { ...(data.user || {}), ...adminUser },
+          user: loggedUser,
         };
         if (rememberMe) {
           localStorage.setItem("vst_admin_session", JSON.stringify(sessionToStore));
@@ -351,24 +369,31 @@ export default function VSTAssistantApp() {
     setLoginError("");
 
     try {
+      const newMemberId = `member_${Date.now()}`;
+      const newMemberName = signupName.trim() || signupEmail.split("@")[0];
       await fetch("/api/members", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          memberId: `member_${Date.now()}`,
-          memberName: signupName.trim() || signupEmail.split("@")[0],
+          action: "signup",
+          memberId: newMemberId,
+          memberName: newMemberName,
+          email: signupEmail.trim(),
+          password: signupPassword.trim(),
           botEnabled: true,
-          isAdmin: true,
+          isAdmin: false,
         }),
       });
 
       const newUser = {
-        name: signupName.trim() || signupEmail.split("@")[0],
+        id: newMemberId,
+        name: newMemberName,
         email: signupEmail.trim(),
-        role: "member",
-        loginType: "email",
+        role: "Member",
+        loginType: "member",
         status: "Active",
         botEnabled: true,
+        pagesCount: 0,
         loginTime: new Date().toISOString(),
       };
 
@@ -384,9 +409,18 @@ export default function VSTAssistantApp() {
     }
   };
 
-  const handleFacebookLogin = () => {
+  const handleFacebookLogin = (_e?: React.MouseEvent | unknown, forUserId?: string, forUserName?: string) => {
     setIsFbConnecting(true);
     setLoginError("");
+
+    const targetUserId = (typeof forUserId === "string" ? forUserId : undefined) || (currentUser as any)?.id;
+    const targetUserName = (typeof forUserName === "string" ? forUserName : undefined) || currentUser?.name;
+    if (targetUserId && targetUserName !== "VST Super Admin") {
+      try {
+        sessionStorage.setItem("vst_fb_connect_user_id", String(targetUserId));
+        sessionStorage.setItem("vst_fb_connect_user_name", String(targetUserName));
+      } catch {}
+    }
 
     const redirectUri =
       typeof window !== "undefined"
@@ -432,7 +466,11 @@ export default function VSTAssistantApp() {
               const apiRes = await fetch("/api/auth/facebook", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ accessToken: userAccessToken }),
+                body: JSON.stringify({
+                  accessToken: userAccessToken,
+                  currentUserId: targetUserId,
+                  currentUserName: targetUserName,
+                }),
               });
               const data = await apiRes.json();
 
@@ -869,21 +907,33 @@ export default function VSTAssistantApp() {
     }
   };
 
+  const extractPageId = (input: string): string => {
+    const trimmed = input.trim();
+    if (!trimmed) return "";
+    if (/^\d+$/.test(trimmed)) return trimmed;
+    const idParam = trimmed.match(/[?&]id=(\d+)/);
+    if (idParam) return idParam[1];
+    const slashNum = trimmed.match(/\/(\d{8,})\b/);
+    if (slashNum) return slashNum[1];
+    return trimmed.replace(/^https?:\/\/(www\.)?facebook\.com\/?/, "").replace(/\/$/, "");
+  };
+
   const handleSaveManualPage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!manualFbPageId || !manualFbPageName) {
-      alert("សូមបំពេញ Page ID និង Page Name");
+    const cleanId = extractPageId(manualFbPageId);
+    if (!cleanId || !manualFbPageName.trim()) {
+      alert(lang === "km" ? "សូមបំពេញ Page ID ឬ Link ផេក និងឈ្មោះ Page" : "Please provide Page ID/Link and Page Name");
       return;
     }
 
     setIsConnectingManualPage(true);
     try {
       const newPage = {
-        id: manualFbPageId.trim(),
+        id: cleanId,
         name: manualFbPageName.trim(),
         category: "ទំព័រផ្លូវការ (Connected Page)",
         isActive: true,
-        ownerName: currentUser.name || "VST Super Admin",
+        ownerName: currentUser.name || "VST Member",
         accessToken: manualFbPageToken.trim() || undefined,
         aiReplyEnabled: true,
       };
@@ -907,7 +957,7 @@ export default function VSTAssistantApp() {
       setManualFbPageId("");
       setManualFbPageName("");
       setManualFbPageToken("");
-      alert(`Page "${newPage.name}" ត្រូវបានភ្ជាប់ជាមួយ VST Assistant ដោយជោគជ័យ! 🚀`);
+      alert(`🎉 Page "${newPage.name}" ត្រូវបានភ្ជាប់ជាមួយ VST Assistant ដោយជោគជ័យ!`);
     } catch (err) {
       alert("បរាជ័យក្នុងការភ្ជាប់ Page");
     } finally {
@@ -1171,11 +1221,10 @@ export default function VSTAssistantApp() {
 
   // Background Auto-Scanner that scans and replies without needing Webhook / App Review
   useEffect(() => {
-    if (!botActive) return;
     runScanner();
-    const interval = setInterval(runScanner, 12000);
+    const interval = setInterval(runScanner, 10000);
     return () => clearInterval(interval);
-  }, [botActive]);
+  }, []);
 
   const handleSendChat = async (customText?: string) => {
     const textToSend = (customText || chatInput).trim();
@@ -3058,6 +3107,15 @@ export default function VSTAssistantApp() {
                     </div>
 
                     {/* Method 2: Manual Page Input */}
+                    <div className="mb-3 rounded-xl bg-cyan-950/40 border border-cyan-800/40 p-3 text-[11px] text-cyan-300 flex items-start gap-2">
+                      <span className="text-base shrink-0">💡</span>
+                      <span>
+                        {lang === "km"
+                          ? "គន្លឹះងាយៗ៖ ក្រុមការងារអាច Copy Link ផេក Facebook ឬ Page ID មកដាក់ត្រង់នេះបានភ្លាមៗ ដោយមិនបាច់ត្រូវការ Facebook Developer App ឬបន្ថែម Tester ឡើយ!"
+                          : "Easy Tip: Team members can paste Facebook Page Link or Page ID directly here without needing Meta Developer App or Tester roles!"}
+                      </span>
+                    </div>
+
                     <form onSubmit={handleSaveManualPage} className="space-y-3">
                       <div>
                         <label className="block text-xs font-medium text-slate-300 mb-1">
@@ -3075,14 +3133,14 @@ export default function VSTAssistantApp() {
 
                       <div>
                         <label className="block text-xs font-medium text-slate-300 mb-1">
-                          {lang === "km" ? "Facebook Page ID *" : "Facebook Page ID *"}
+                          {lang === "km" ? "Facebook Page ID ឬ Link ផេក *" : "Facebook Page ID or Page Link *"}
                         </label>
                         <input
                           type="text"
                           required
                           value={manualFbPageId}
                           onChange={(e) => setManualFbPageId(e.target.value)}
-                          placeholder="ឧ. 109283746501928"
+                          placeholder="ឧ. 109283746501928 ឬ https://facebook.com/myPage"
                           className="w-full rounded-xl border border-slate-700 bg-slate-900/80 px-3.5 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-500"
                         />
                       </div>

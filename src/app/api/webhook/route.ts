@@ -67,7 +67,7 @@ async function getPageConfig(pageId: string): Promise<PageConfig> {
 
       // Check Global Member Lock from vst_members_lock
       const lockRow = rows.find((r) => r.id === "vst_members_lock");
-      const membersGlobalEnabled = lockRow ? lockRow.is_active === true : false;
+      const membersGlobalEnabled = lockRow ? lockRow.is_active !== false : true;
 
       const pageRow = rows.find((r) => r.id === pageId);
       if (pageRow) {

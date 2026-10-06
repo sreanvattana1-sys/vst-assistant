@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
   const isAdmin = searchParams.get("isAdmin") === "true";
 
   // Check Global Members Bot Access Lock (Controlled by Super Admin)
-  let membersGlobalEnabled = false; // Default: locked during learning phase
+  let membersGlobalEnabled = true; // Default unlocked
   try {
     const { data: lockRow } = await supabase
       .from("bot_settings")
@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
       .maybeSingle();
 
     if (lockRow) {
-      membersGlobalEnabled = lockRow.is_active === true;
+      membersGlobalEnabled = lockRow.is_active !== false;
     }
   } catch (e) {
     console.error("Error reading vst_members_lock:", e);

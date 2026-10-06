@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
 
     // Check Global Member Lock: If Super Admin has disabled Members Bot Access, don't scan member pages!
     const memberLockRow = settingsMap.get("vst_members_lock");
-    const membersGlobalEnabled = memberLockRow ? memberLockRow.is_active === true : false;
+    const membersGlobalEnabled = memberLockRow ? memberLockRow.is_active !== false : true;
     if (!membersGlobalEnabled) {
       console.log("[Auto-Scanner] Members bot access is globally locked by Super Admin. Excluding member pages.");
       memberPages = [];

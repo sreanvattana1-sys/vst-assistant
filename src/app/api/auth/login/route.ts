@@ -24,8 +24,19 @@ export async function POST(req: NextRequest) {
       cleanPassword === DEFAULT_ADMIN_PASSWORD;
 
     let isAuthenticated = matchesDefault;
+    let authUser: any = null;
 
-    // 2. Check if a custom password was saved in Supabase bot_settings
+    if (isAuthenticated) {
+      authUser = {
+        name: "VST Super Admin",
+        email: cleanEmail,
+        role: "owner",
+        loginType: "admin",
+        loginTime: new Date().toISOString(),
+      };
+    }
+
+    // 2. Check if a custom password was saved in Supabase bot_settings for Admin
     if (!isAuthenticated) {
       try {
         const { data } = await supabase
@@ -41,6 +52,13 @@ export async function POST(req: NextRequest) {
             cleanPassword === data.custom_admin_password
           ) {
             isAuthenticated = true;
+            authUser = {
+              name: "VST Super Admin",
+              email: cleanEmail,
+              role: "owner",
+              loginType: "admin",
+              loginTime: new Date().toISOString(),
+            };
           }
         }
       } catch (err) {
@@ -48,7 +66,63 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // 3. Check registered members in vst_members
     if (!isAuthenticated) {
+      try {
+        const { data: memberData } = await supabase
+          .from("bot_settings")
+          .select("dm_template")
+          .eq("id", "vst_members")
+          .maybeSingle();
+
+        if (memberData?.dm_template) {
+          const membersList = JSON.parse(memberData.dm_template);
+          if (Array.isArray(membersList)) {
+            const foundIdx = membersList.findIndex((m: any) =>
+              (m.email && m.email.toLowerCase() === cleanEmail) ||
+              (m.name && m.name.toLowerCase() === cleanEmail) ||
+              (m.id && String(m.id).toLowerCase() === cleanEmail)
+            );
+
+            if (foundIdx >= 0) {
+              const m = membersList[foundIdx];
+              // If member has password, verify it; if legacy without password, save this password for them!
+              const passwordMatches = !m.password || m.password === cleanPassword;
+              if (passwordMatches) {
+                if (!m.password) {
+                  // Save password for future logins
+                  membersList[foundIdx].password = cleanPassword;
+                  await supabase.from("bot_settings").upsert({
+                    id: "vst_members",
+                    is_active: true,
+                    dm_template: JSON.stringify(membersList),
+                    updated_at: new Date().toISOString(),
+                  });
+                }
+
+                isAuthenticated = true;
+                authUser = {
+                  id: m.id,
+                  name: m.name,
+                  email: m.email || cleanEmail,
+                  role: m.role || "Member",
+                  loginType: "member",
+                  status: m.status || "Active",
+                  botEnabled: m.botEnabled !== false,
+                  picture: m.picture || null,
+                  pagesCount: Array.isArray(m.pages) ? m.pages.length : 0,
+                  loginTime: new Date().toISOString(),
+                };
+              }
+            }
+          }
+        }
+      } catch (memErr) {
+        console.error("Member login check error:", memErr);
+      }
+    }
+
+    if (!isAuthenticated || !authUser) {
       return NextResponse.json(
         { success: false, error: "INVALID_CREDENTIALS" },
         { status: 401 }
@@ -61,13 +135,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       token,
-      user: {
-        name: "VST Super Admin",
-        email: cleanEmail,
-        role: "owner",
-        loginType: "admin",
-        loginTime: new Date().toISOString(),
-      },
+      user: authUser,
     });
   } catch (error) {
     console.error("Login API error:", error);

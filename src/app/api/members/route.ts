@@ -104,9 +104,11 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { memberId, memberName, botEnabled, isAdmin } = await req.json();
+    const { action, memberId, memberName, email, password, botEnabled, isAdmin } = await req.json();
 
-    if (!isAdmin) {
+    const isSignup = action === "signup" || Boolean(password && email);
+
+    if (!isAdmin && !isSignup) {
       return NextResponse.json(
         {
           success: false,
@@ -116,9 +118,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!memberId && !memberName) {
+    if (!memberId && !memberName && !email) {
       return NextResponse.json(
-        { success: false, error: "Missing memberId or memberName" },
+        { success: false, error: "Missing memberId, memberName or email" },
         { status: 400 }
       );
     }
@@ -144,20 +146,28 @@ export async function POST(req: NextRequest) {
       (m: any) =>
         (memberId && (m.id === memberId || String(m.id) === String(memberId))) ||
         (memberName && m.name?.toLowerCase() === memberName.toLowerCase()) ||
+        (email && m.email && m.email.toLowerCase() === email.toLowerCase()) ||
         (m.name?.toLowerCase().includes("sam") && (memberId?.includes("sam") || memberName?.toLowerCase().includes("sam")))
     );
 
     let updatedMember: any = null;
 
     if (targetIdx >= 0) {
-      membersList[targetIdx].botEnabled = botEnabled;
-      membersList[targetIdx].status = botEnabled ? "Active" : "Disabled";
+      if (typeof botEnabled === "boolean") {
+        membersList[targetIdx].botEnabled = botEnabled;
+        membersList[targetIdx].status = botEnabled ? "Active" : "Disabled";
+      }
+      if (email) membersList[targetIdx].email = email;
+      if (password) membersList[targetIdx].password = password;
+      membersList[targetIdx].lastLogin = new Date().toISOString();
       updatedMember = membersList[targetIdx];
     } else {
       const isSamUser = memberName?.toLowerCase().includes("sam");
       const newEntry = {
         id: memberId || `member_${Date.now()}`,
-        name: memberName || "Member",
+        name: memberName || (email ? email.split("@")[0] : "Member"),
+        email: email || null,
+        password: password || undefined,
         role: "Member",
         loginType: "Email / System",
         pagesCount: isSamUser ? 5 : 0,
@@ -171,8 +181,8 @@ export async function POST(req: NextRequest) {
             ]
           : [],
         lastLogin: new Date().toISOString(),
-        status: botEnabled ? "Active" : "Disabled",
-        botEnabled: botEnabled,
+        status: botEnabled !== false ? "Active" : "Disabled",
+        botEnabled: botEnabled !== false,
       };
       membersList.push(newEntry);
       updatedMember = newEntry;
