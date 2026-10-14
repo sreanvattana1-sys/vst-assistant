@@ -322,6 +322,62 @@ Example format:
         );
       }
 
+// Helper to fetch individual Page Access Tokens from Supabase vst_members & env
+async function getPageTokensMap(): Promise<Record<string, string>> {
+  const tokenMap: Record<string, string> = {};
+
+  try {
+    const { data: memberData } = await supabase
+      .from("bot_settings")
+      .select("dm_template")
+      .eq("id", "vst_members")
+      .maybeSingle();
+
+    if (memberData?.dm_template) {
+      const members = JSON.parse(memberData.dm_template);
+      if (Array.isArray(members)) {
+        for (const m of members) {
+          if (Array.isArray(m.pages)) {
+            for (const p of m.pages) {
+              const token = p.accessToken || p.access_token;
+              if (p.id && token) {
+                tokenMap[p.id] = token;
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Error reading page tokens from vst_members:", err);
+  }
+
+  // Fallback to individual page rows in bot_settings if any
+  try {
+    const { data: pageRows } = await supabase
+      .from("bot_settings")
+      .select("id, dm_template")
+      .neq("id", "vst_members")
+      .neq("id", "vst_video_posts");
+
+    if (pageRows) {
+      for (const row of pageRows) {
+        if (row.dm_template && row.dm_template.startsWith("EAA")) {
+          tokenMap[row.id] = row.dm_template;
+        }
+      }
+    }
+  } catch {}
+
+  // Environment fallback
+  const envToken = process.env.FB_PAGE_ACCESS_TOKEN;
+  if (envToken && !tokenMap["955747057621489"]) {
+    tokenMap["955747057621489"] = envToken;
+  }
+
+  return tokenMap;
+}
+
       const results: {
         pageId: string;
         pageName: string;
@@ -329,15 +385,41 @@ Example format:
         postId?: string;
         captionPreview: string;
         message?: string;
+        needsReauth?: boolean;
       }[] = [];
 
+      const tokenMap = await getPageTokensMap();
       const defaultToken = process.env.FB_PAGE_ACCESS_TOKEN;
 
-      // Process and dispatch to each page
+      // Process and dispatch to each page with genuine Meta API calls
       for (const item of pageCaptions) {
+        const pageToken = tokenMap[item.pageId] || defaultToken;
+
+        if (!pageToken) {
+          results.push({
+            pageId: item.pageId,
+            pageName: item.pageName,
+            status: "error",
+            captionPreview: item.caption.slice(0, 70) + "...",
+            message: "ពុំមាន Access Token សម្រាប់ Page នេះទេ (សូម Re-authorize តាម Facebook Login)",
+            needsReauth: true,
+          });
+          continue;
+        }
+
         try {
-          if (videoUrl && defaultToken && !videoUrl.startsWith("data:")) {
-            const fbRes = await fetch(
+          const isRemoteVideoUrl =
+            videoUrl &&
+            (videoUrl.startsWith("http://") || videoUrl.startsWith("https://")) &&
+            !videoUrl.includes("localhost") &&
+            !videoUrl.startsWith("blob:");
+
+          let fbRes: Response;
+          let fbData: any;
+
+          if (isRemoteVideoUrl) {
+            // 1. Post Video or Reel via /videos Graph API
+            fbRes = await fetch(
               `https://graph.facebook.com/v19.0/${item.pageId}/videos`,
               {
                 method: "POST",
@@ -346,42 +428,64 @@ Example format:
                   file_url: videoUrl,
                   description: item.caption,
                   title: title || "Video Post",
-                  access_token: defaultToken,
+                  access_token: pageToken,
                 }),
               }
             );
-
-            const fbData = await fbRes.json();
-            if (fbRes.ok && fbData.id) {
-              results.push({
-                pageId: item.pageId,
-                pageName: item.pageName,
-                status: "success",
-                postId: fbData.id,
-                captionPreview: item.caption.slice(0, 70) + "...",
-                message: "បានផុសទៅកាន់ Facebook Page ជោគជ័យ!",
-              });
-              continue;
-            }
+            fbData = await fbRes.json();
+          } else {
+            // 2. Post directly to Page Feed (/feed)
+            fbRes = await fetch(
+              `https://graph.facebook.com/v19.0/${item.pageId}/feed`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  message: item.caption,
+                  access_token: pageToken,
+                }),
+              }
+            );
+            fbData = await fbRes.json();
           }
 
-          // Successful dispatch / simulated ID
-          const simulatedPostId = `${item.pageId}_${Date.now()}`;
-          results.push({
-            pageId: item.pageId,
-            pageName: item.pageName,
-            status: "success",
-            postId: simulatedPostId,
-            captionPreview: item.caption.slice(0, 70) + "...",
-            message: "បានកត់ត្រា និងបញ្ជូនទៅកាន់ Page ជោគជ័យ!",
-          });
+          if (fbRes.ok && fbData?.id) {
+            results.push({
+              pageId: item.pageId,
+              pageName: item.pageName,
+              status: "success",
+              postId: fbData.id,
+              captionPreview: item.caption.slice(0, 70) + "...",
+              message: "បានផុសទៅកាន់ Facebook Page ផ្ទាល់ជោគជ័យ!",
+            });
+          } else {
+            const errObj = fbData?.error;
+            const errCode = errObj?.code;
+            const errMsg = errObj?.message || "Meta API returned an error";
+            const isPermError =
+              errCode === 200 ||
+              errCode === 190 ||
+              errMsg.includes("pages_manage_posts") ||
+              errMsg.includes("requires both pages_read_engagement");
+
+            results.push({
+              pageId: item.pageId,
+              pageName: item.pageName,
+              status: "error",
+              captionPreview: item.caption.slice(0, 70) + "...",
+              message: isPermError
+                ? "Facebook ទាមទារសិទ្ធិ 'pages_manage_posts' (សូមចុចប៊ូតុង 'ភ្ជាប់សិទ្ធិឡើងវិញ')"
+                : `Facebook Error: ${errMsg}`,
+              needsReauth: isPermError,
+            });
+          }
         } catch (e: any) {
           results.push({
             pageId: item.pageId,
             pageName: item.pageName,
             status: "error",
             captionPreview: item.caption.slice(0, 70) + "...",
-            message: e.message || "Failed to publish",
+            message: e.message || "Failed to communicate with Facebook",
           });
         }
       }

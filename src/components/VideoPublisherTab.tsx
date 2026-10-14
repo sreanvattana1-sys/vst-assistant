@@ -128,8 +128,59 @@ export default function VideoPublisherTab({
     pageId: string;
     pageName: string;
     status: "success" | "error";
+    postId?: string;
     message?: string;
+    needsReauth?: boolean;
   }[] | null>(null);
+  const [isReauthorizing, setIsReauthorizing] = useState(false);
+
+  // Re-authorize Facebook with pages_manage_posts and publish_video permissions
+  const triggerFacebookReauth = () => {
+    setIsReauthorizing(true);
+    const redirectUri =
+      typeof window !== "undefined"
+        ? window.location.origin
+        : "https://vst-assistant.vercel.app";
+    const scopes =
+      "public_profile,pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_engagement,pages_manage_metadata,pages_messaging,pages_manage_posts,publish_video,ads_read,ads_management";
+    const fbOAuthUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=1424105379104638&redirect_uri=${encodeURIComponent(
+      redirectUri
+    )}&response_type=token&auth_type=rerequest&scope=${scopes}`;
+
+    if ((window as any).FB) {
+      (window as any).FB.login(
+        async (response: any) => {
+          if (response?.authResponse?.accessToken) {
+            try {
+              const apiRes = await fetch("/api/auth/facebook", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  accessToken: response.authResponse.accessToken,
+                }),
+              });
+              const data = await apiRes.json();
+              if (data.success) {
+                alert("បានភ្ជាប់សិទ្ធិ Facebook គ្រប់ជ្រុងជ្រោយជោគជ័យ! លោកអ្នកអាចផុសបានភ្លាមៗ។");
+                window.location.reload();
+              } else {
+                alert("Facebook Error: " + (data.error || "Failed to sync"));
+              }
+            } catch (e: any) {
+              alert("Error: " + e.message);
+            } finally {
+              setIsReauthorizing(false);
+            }
+          } else {
+            setIsReauthorizing(false);
+          }
+        },
+        { scope: scopes, auth_type: "rerequest" }
+      );
+    } else {
+      window.location.href = fbOAuthUrl;
+    }
+  };
 
   // History State
   const [history, setHistory] = useState<VideoPostRecord[]>([]);
@@ -350,6 +401,33 @@ export default function VideoPublisherTab({
             <span>📹 Page Video ធម្មតា</span>
           </button>
         </div>
+      </div>
+
+      {/* Facebook Permissions & Re-Auth Alert Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-gradient-to-r from-indigo-950/70 via-slate-900 to-indigo-950/70 border border-indigo-500/30 text-xs shadow-md">
+        <div className="flex items-center gap-2.5 text-slate-300">
+          <div className="p-1.5 rounded-xl bg-indigo-500/20 text-indigo-400">
+            <AlertCircle className="h-4 w-4" />
+          </div>
+          <div>
+            <span className="font-bold text-white">សិទ្ធិផុសលើ Facebook (Post Permissions)៖</span>{" "}
+            <span className="text-slate-400">
+              ដើម្បីឱ្យការផុសចូល Page បានពិតប្រាកដ Facebook តម្រូវឱ្យ Account មានសិទ្ធិ{" "}
+              <code className="text-pink-400 font-mono text-[11px] bg-slate-800 px-1 py-0.5 rounded">
+                pages_manage_posts
+              </code>
+            </span>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={triggerFacebookReauth}
+          disabled={isReauthorizing}
+          className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 transition shrink-0"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${isReauthorizing ? "animate-spin" : ""}`} />
+          <span>{isReauthorizing ? "កំពុងភ្ជាប់..." : "🔑 ភ្ជាប់សិទ្ធិ Facebook ឡើងវិញ (Re-authorize)"}</span>
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -785,24 +863,85 @@ export default function VideoPublisherTab({
 
           {/* Results Notification */}
           {publishResults && (
-            <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 space-y-2">
-              <div className="flex items-center gap-2 text-emerald-300 font-bold text-xs">
-                <CheckCircle2 className="h-4 w-4" />
-                <span>ការផុសទៅកាន់ Pages ទាំងអស់ត្រូវបានបញ្ចប់ជោគជ័យ!</span>
-              </div>
-              <div className="divide-y divide-emerald-900/40 text-xs">
-                {publishResults.map((r) => (
-                  <div
-                    key={r.pageId}
-                    className="py-1.5 flex items-center justify-between text-slate-200"
-                  >
-                    <span>{r.pageName}</span>
-                    <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                      <Check className="h-3 w-3" />
-                      <span>ជោគជ័យ</span>
-                    </span>
+            <div className="space-y-3">
+              {publishResults.some((r) => r.status === "error") ? (
+                <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/40 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2 text-amber-300 font-bold text-xs">
+                      <AlertCircle className="h-5 w-5 text-amber-400 shrink-0" />
+                      <span>Facebook ត្រូវការឱ្យអ្នកអនុញ្ញាតសិទ្ធិផុស (Permission Re-authorization)</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={triggerFacebookReauth}
+                      disabled={isReauthorizing}
+                      className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-orange-500/20 transition shrink-0"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${isReauthorizing ? "animate-spin" : ""}`} />
+                      <span>{isReauthorizing ? "កំពុងភ្ជាប់..." : "🔑 ចុចទីនេះដើម្បីភ្ជាប់សិទ្ធិឡើងវិញ"}</span>
+                    </button>
                   </div>
-                ))}
+                  <p className="text-[11px] text-amber-200/80 leading-relaxed">
+                    មូលហេតុ៖ Facebook Graph API តម្រូវឱ្យ Account មានសិទ្ធិ <strong>pages_manage_posts</strong> ទើបអាចផុសចូល Page បានពិតប្រាកដ។ សូមចុចប៊ូតុងខាងលើម្តងដើម្បីអនុញ្ញាត ហើយចុចបញ្ជាផុសម្តងទៀត។
+                  </p>
+                </div>
+              ) : (
+                <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 space-y-1">
+                  <div className="flex items-center gap-2 text-emerald-300 font-bold text-xs">
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span>ការផុសទៅកាន់ Pages ទាំងអស់ត្រូវបានបញ្ជូនទៅកាន់ Facebook ជោគជ័យ!</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Breakdown per Page */}
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-3.5 space-y-2">
+                <span className="text-[11px] font-bold text-slate-400 block pb-1 border-b border-slate-800">
+                  ស្ថានភាពលម្អិតតាម Page នីមួយៗ (Posting Breakdown)៖
+                </span>
+                <div className="divide-y divide-slate-800/60 text-xs">
+                  {publishResults.map((r) => (
+                    <div
+                      key={r.pageId}
+                      className="py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-slate-200"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            r.status === "success" ? "bg-emerald-400" : "bg-rose-400"
+                          }`}
+                        />
+                        <span className="font-semibold text-white">{r.pageName}</span>
+                      </div>
+                      <div className="flex items-center gap-2.5">
+                        {r.status === "success" ? (
+                          <>
+                            <span className="text-emerald-400 font-semibold flex items-center gap-1 text-xs">
+                              <Check className="h-3.5 w-3.5" />
+                              <span>ចូល Page ជោគជ័យ</span>
+                            </span>
+                            {r.postId && (
+                              <a
+                                href={`https://facebook.com/${r.postId}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-cyan-400 hover:text-cyan-300 underline flex items-center gap-1 text-[11px]"
+                              >
+                                <span>មើល Post ផ្ទាល់</span>
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-rose-400 font-medium text-[11px] flex items-center gap-1">
+                            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                            <span>{r.message || "មិនទាន់ចូល Page"}</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
