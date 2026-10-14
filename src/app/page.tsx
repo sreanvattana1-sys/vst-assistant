@@ -36,9 +36,24 @@ import {
   UploadCloud,
   Paperclip,
   Brain,
+  Megaphone,
+  Film,
 } from "lucide-react";
 import { translations, Language } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase";
+import AdsManagerTab from "@/components/AdsManagerTab";
+import VideoPublisherTab from "@/components/VideoPublisherTab";
+
+const COMPANY_PAGES = [
+  { id: "955747057621489", name: "Kidney Pro ឃីដនី ប្រូ", category: "សុខភាព & សម្រស់ (Health/Beauty)" },
+  { id: "1039779202551647", name: "អេមមី សុខភាពស្រ្តី", category: "សុខភាពស្ត្រី (Women Health)" },
+  { id: "827063453815073", name: "គុណភាពតម្រងនោម", category: "សុខភាពតម្រងនោម (Kidney Care)" },
+  { id: "928036717066754", name: "Emmi Cambodia", category: "សម្រស់ & ថែទាំ (Beauty/Care)" },
+  { id: "923321100873981", name: "Emmi", category: "ផលិតផលផ្លូវការ (Official)" },
+  { id: "985673367962860", name: "Emmi By CEO", category: "ម៉ាកយីហោ (Brand)" },
+  { id: "997410203461527", name: "Emmi Care", category: "ថែទាំសម្រស់ (Care/Beauty)" },
+  { id: "101267342561819", name: "Emmi អេមមី", category: "វីដេអូ & Reel (Reel Creator)" },
+];
 
 export default function VSTAssistantApp() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -965,6 +980,62 @@ export default function VSTAssistantApp() {
     }
   };
 
+  const [isConnectingOneClick, setIsConnectingOneClick] = useState<string | null>(null);
+
+  const handleOneClickConnectPage = async (page: { id: string; name: string; category: string }) => {
+    setIsConnectingOneClick(page.id);
+    try {
+      const res = await fetch("/api/pages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "connect",
+          pageId: page.id,
+          name: page.name,
+          category: page.category,
+          ownerName: currentUser.name || "VST Member",
+          userId: (currentUser as any).id || (currentUser as any).email || "",
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchPages(currentUser);
+        setIsConnectFbModalOpen(false);
+        alert(
+          lang === "km"
+            ? `🎉 បានភ្ជាប់ Page "${page.name}" ចូលគណនីរបស់បងដោយជោគជ័យ!`
+            : `🎉 Successfully connected "${page.name}" to your account!`
+        );
+      } else {
+        alert(data.error || "បរាជ័យក្នុងការភ្ជាប់ Page");
+      }
+    } catch {
+      alert("មានបញ្ហាក្នុងការភ្ជាប់ Page");
+    } finally {
+      setIsConnectingOneClick(null);
+    }
+  };
+
+  const handleDisconnectPage = async (pageId: string, pageName: string) => {
+    if (!confirm(lang === "km" ? `តើបងពិតជាចង់ផ្ដាច់ Page "${pageName}" ចេញពីគណនីមែនទេ?` : `Disconnect "${pageName}"?`)) return;
+    try {
+      await fetch("/api/pages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "disconnect",
+          pageId,
+          userId: (currentUser as any).id || "",
+          ownerName: currentUser.name || "",
+        }),
+      });
+      await fetchPages(currentUser);
+      alert(lang === "km" ? `បានផ្ដាច់ Page "${pageName}" រួចរាល់` : `Page "${pageName}" disconnected`);
+    } catch {
+      alert("បរាជ័យក្នុងការផ្ដាច់ Page");
+    }
+  };
+
   // Customers CRM state
   const [customersList, setCustomersList] = useState<any[]>([]);
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(false);
@@ -1740,6 +1811,7 @@ export default function VSTAssistantApp() {
             <div className="space-y-1">
               {[
                 { id: "bot", label: t.nav.botSettings, icon: Bot },
+                { id: "video_publisher", label: (t.nav as any).videoPublisher || "ផុស Video & Reels", icon: Film, badge: "Reels" },
                 ...(isAdmin
                   ? [
                       { id: "ai_training", label: lang === "km" ? "បង្រៀន & ចំណេះដឹង AI" : "AI Training & Memory", icon: Brain, badge: "Hub" }
@@ -1791,6 +1863,7 @@ export default function VSTAssistantApp() {
                     ]
                   : []),
                 { id: "reports", label: t.nav.reports, icon: TrendingUp },
+                { id: "ads_manager", label: (t.nav as any).ads_manager || "Meta Ads Manager", icon: Megaphone, badge: "Ads" },
               ].map((item) => {
                 const Icon = item.icon;
                 const isActive = activeTab === item.id;
@@ -1879,6 +1952,10 @@ export default function VSTAssistantApp() {
                   ? "ប្រព័ន្ធគ្រប់គ្រងអតិថិជន និង Leads"
                   : activeTab === "ai_training"
                   ? "បង្រៀន និងកំណត់ចំណេះដឹង Memory AI"
+                  : activeTab === "ads_manager"
+                  ? "តាមដានការចំណាយ ថ្លៃឆាត CPR និងយុទ្ធនាការ Meta Ads"
+                  : activeTab === "video_publisher"
+                  ? "ផុស Video & Reels ម្ដងបានច្រើន Page ជាមួយ AI បង្កើត Caption"
                   : "ប្រព័ន្ធគ្រប់គ្រងស្វ័យប្រវត្តិកម្ម VST"}
               </p>
             </div>
@@ -3052,19 +3129,24 @@ export default function VSTAssistantApp() {
 
               {/* 5. Connect Facebook Admin Page Modal */}
               {isConnectFbModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-                  <div className="w-full max-w-md rounded-3xl border border-slate-800 bg-[#091322] p-6 shadow-2xl">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
+                  <div className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-3xl border border-slate-800 bg-[#091322] p-6 shadow-2xl space-y-5">
                     <div className="flex items-center justify-between pb-4 border-b border-slate-800">
                       <div className="flex items-center gap-2.5">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 text-white shadow-md">
                           <Plus className="h-5 w-5" />
                         </div>
                         <div>
-                          <h4 className="text-sm font-bold text-white">
-                            {lang === "km" ? "ភ្ជាប់ Facebook Admin Page" : "Connect Facebook Admin Page"}
+                          <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                            <span>{lang === "km" ? "🔗 ភ្ជាប់ Facebook Page" : "Connect Facebook Page"}</span>
+                            <span className="rounded-full bg-cyan-500/20 px-2 py-0.5 text-[10px] font-bold text-cyan-300 border border-cyan-500/30">
+                              1-Click Instant
+                            </span>
                           </h4>
-                          <p className="text-[11px] text-slate-400">
-                            {lang === "km" ? "ភ្ជាប់តាមរយៈ Facebook Login ឬ បញ្ចូល Page ID" : "Connect via FB Login or Page ID"}
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            {lang === "km"
+                              ? "ចុចភ្ជាប់ Page របស់ក្រុមហ៊ុនភ្លាមៗ មិនបាច់ត្រូវការ Facebook Login ឬ Add Tester ឡើយ!"
+                              : "Pick a company page to connect in 1 click without needing Facebook OAuth!"}
                           </p>
                         </div>
                       </div>
@@ -3076,46 +3158,103 @@ export default function VSTAssistantApp() {
                       </button>
                     </div>
 
-                    {/* Method 1: Facebook Login */}
-                    <div className="mt-4 p-4 rounded-2xl bg-blue-600/10 border border-blue-500/20 text-center">
-                      <p className="text-xs text-blue-200 mb-3">
-                        {lang === "km"
-                          ? "វិធីទី ១៖ ចូលគណនី Facebook របស់អ្នកដើម្បីទាញយក Pages ទាំងអស់ដោយស្វ័យប្រវត្តិ"
-                          : "Method 1: Log in with Facebook to auto-import all managed pages"}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsConnectFbModalOpen(false);
-                          handleFacebookLogin();
-                        }}
-                        className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 py-2.5 text-xs font-bold text-white shadow-lg transition"
-                      >
-                        <svg className="h-4 w-4 fill-current" viewBox="0 0 24 24">
-                          <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-                        </svg>
-                        <span>{lang === "km" ? "ភ្ជាប់ភ្លាមៗតាម Facebook Login" : "Connect with Facebook Login"}</span>
-                      </button>
+                    {/* Method 1: One-Click Company Page Picker */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2.5">
+                        <span className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                          <span>⚡</span>
+                          <span>{lang === "km" ? "ជម្រើសទី ១ (ស្រួលបំផុត) ៖ ចុចភ្ជាប់ Page របស់ក្រុមហ៊ុន" : "Method 1 (Easiest): One-Click Company Page Picker"}</span>
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {COMPANY_PAGES.length} {lang === "km" ? "ផេកផ្លូវការ" : "Official Pages"}
+                        </span>
+                      </div>
+
+                      <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                        {COMPANY_PAGES.map((cp) => {
+                          const isAlreadyConnected = managedPages.some((mp) => mp.id === cp.id);
+                          const isConnectingThis = isConnectingOneClick === cp.id;
+
+                          return (
+                            <div
+                              key={cp.id}
+                              className={`flex items-center justify-between p-3 rounded-2xl border transition ${
+                                isAlreadyConnected
+                                  ? "border-emerald-500/30 bg-emerald-950/20"
+                                  : "border-slate-800/80 bg-slate-900/60 hover:border-cyan-500/40 hover:bg-slate-850"
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-600 flex items-center justify-center text-white font-bold text-xs shadow-md shrink-0">
+                                  {cp.name.charAt(0)}
+                                </div>
+                                <div>
+                                  <div className="font-semibold text-xs text-white flex items-center gap-2">
+                                    <span>{cp.name}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <span className="text-[10px] text-slate-400">
+                                      {cp.category}
+                                    </span>
+                                    <span className="text-[10px] text-slate-500 font-mono">
+                                      ID: {cp.id}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div>
+                                {isAlreadyConnected ? (
+                                  <div className="flex items-center gap-2">
+                                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-500/15 px-2.5 py-1 rounded-xl border border-emerald-500/30">
+                                      <span>✓</span>
+                                      <span>{lang === "km" ? "ភ្ជាប់រួចហើយ" : "Connected"}</span>
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDisconnectPage(cp.id, cp.name)}
+                                      className="text-[10px] text-rose-400 hover:text-rose-300 hover:underline px-1 py-1"
+                                      title="ផ្ដាច់ចេញពីគណនីនេះ"
+                                    >
+                                      {lang === "km" ? "ផ្ដាច់" : "Unlink"}
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled={Boolean(isConnectingOneClick)}
+                                    onClick={() => handleOneClickConnectPage(cp)}
+                                    className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 px-3.5 py-1.5 text-xs font-bold text-white shadow-md transition disabled:opacity-50 active:scale-95"
+                                  >
+                                    {isConnectingThis ? (
+                                      <>
+                                        <RefreshCw className="h-3 w-3 animate-spin" />
+                                        <span>{lang === "km" ? "កំពុងភ្ជាប់..." : "Connecting..."}</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <span>⚡</span>
+                                        <span>{lang === "km" ? "ចុចភ្ជាប់" : "Connect"}</span>
+                                      </>
+                                    )}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
 
-                    <div className="my-4 flex items-center gap-3">
+                    <div className="flex items-center gap-3">
                       <div className="flex-1 h-px bg-slate-800" />
                       <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">
-                        {lang === "km" ? "ឬ ភ្ជាប់ដោយផ្ទាល់ (Manual)" : "OR MANUAL CONNECT"}
+                        {lang === "km" ? "ឬ ភ្ជាប់ Page ថ្មីផ្សេងទៀត (Manual)" : "OR ADD CUSTOM PAGE"}
                       </span>
                       <div className="flex-1 h-px bg-slate-800" />
                     </div>
 
                     {/* Method 2: Manual Page Input */}
-                    <div className="mb-3 rounded-xl bg-cyan-950/40 border border-cyan-800/40 p-3 text-[11px] text-cyan-300 flex items-start gap-2">
-                      <span className="text-base shrink-0">💡</span>
-                      <span>
-                        {lang === "km"
-                          ? "គន្លឹះងាយៗ៖ ក្រុមការងារអាច Copy Link ផេក Facebook ឬ Page ID មកដាក់ត្រង់នេះបានភ្លាមៗ ដោយមិនបាច់ត្រូវការ Facebook Developer App ឬបន្ថែម Tester ឡើយ!"
-                          : "Easy Tip: Team members can paste Facebook Page Link or Page ID directly here without needing Meta Developer App or Tester roles!"}
-                      </span>
-                    </div>
-
                     <form onSubmit={handleSaveManualPage} className="space-y-3">
                       <div>
                         <label className="block text-xs font-medium text-slate-300 mb-1">
@@ -3141,19 +3280,6 @@ export default function VSTAssistantApp() {
                           value={manualFbPageId}
                           onChange={(e) => setManualFbPageId(e.target.value)}
                           placeholder="ឧ. 109283746501928 ឬ https://facebook.com/myPage"
-                          className="w-full rounded-xl border border-slate-700 bg-slate-900/80 px-3.5 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-500"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-medium text-slate-300 mb-1">
-                          {lang === "km" ? "Page Access Token (បើមាន)" : "Page Access Token (Optional)"}
-                        </label>
-                        <input
-                          type="password"
-                          value={manualFbPageToken}
-                          onChange={(e) => setManualFbPageToken(e.target.value)}
-                          placeholder="EAAB..."
                           className="w-full rounded-xl border border-slate-700 bg-slate-900/80 px-3.5 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-500"
                         />
                       </div>
@@ -4228,6 +4354,16 @@ export default function VSTAssistantApp() {
                 </div>
               </div>
             </div>
+          )}
+
+          {/* TAB: ADS MANAGER */}
+          {activeTab === "ads_manager" && (
+            <AdsManagerTab lang={lang} isAdmin={isAdmin} />
+          )}
+
+          {/* TAB: VIDEO & REELS PUBLISHER */}
+          {activeTab === "video_publisher" && (
+            <VideoPublisherTab lang={lang} connectedPages={COMPANY_PAGES} />
           )}
         </div>
       </main>

@@ -32,6 +32,8 @@ export const translations = {
       pages: "Facebook Pages ដែលបានភ្ជាប់",
       admin: "គ្រប់គ្រងសមាជិក (Owner Panel)",
       reports: "ស្ថិតិ & របាយការណ៍លក់",
+      ads_manager: "Meta Ads Manager (ផ្ទាំងតាមដានការផ្សាយពាណិជ្ជកម្ម)",
+      video_publisher: "ផុស Video & Reels លើ Pages ច្រើន (Multi-Publisher)",
     },
     botStatusLabel: "Bot ដំណើរការ៖",
 
@@ -39,12 +41,14 @@ export const translations = {
     nav: {
       dashboard: "ផ្ទាំងគ្រប់គ្រង (Dashboard)",
       botSettings: "ការកំណត់ Bot (Bot Settings)",
+      videoPublisher: "ផុស Video & Reels",
       inbox: "ប្រអប់សារ (Inbox)",
       customers: "អតិថិជន (Customers)",
       pages: "Facebook Pages",
       adminHeader: "ការគ្រប់គ្រង (ADMIN)",
       admin: "Admin & Members",
       reports: "របាយការណ៍ (Reports)",
+      ads_manager: "Meta Ads Manager",
     },
 
     // Tab 1: Dashboard
@@ -209,6 +213,8 @@ export const translations = {
       pages: "Connected Facebook Pages",
       admin: "Admin & Team Management",
       reports: "Analytics & Sales Reports",
+      ads_manager: "Meta Ads Manager",
+      video_publisher: "Multi-Page Video & Reels Publisher",
     },
     botStatusLabel: "Bot Status:",
 
@@ -216,12 +222,14 @@ export const translations = {
     nav: {
       dashboard: "Dashboard",
       botSettings: "Bot Settings",
+      videoPublisher: "Video & Reels Publisher",
       inbox: "Inbox",
       customers: "Customers CRM",
       pages: "Facebook Pages",
       adminHeader: "ADMIN MANAGEMENT",
       admin: "Admin & Members",
       reports: "Reports & Analytics",
+      ads_manager: "Meta Ads Manager",
     },
 
     // Tab 1: Dashboard

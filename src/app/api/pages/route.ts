@@ -155,7 +155,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { action, pageId, isActive, isAdmin, name, category, ownerName, userId, accessToken } = body;
 
-    // A. Connect / Register a New Page (Manual or FB)
+    // A. Connect / Register a New Page (Manual, 1-Click, or FB)
     if (action === "connect" || (pageId && name && ownerName)) {
       if (!pageId || !name) {
         return NextResponse.json(
@@ -187,11 +187,25 @@ export async function POST(req: NextRequest) {
           (m.name && m.name.toLowerCase() === targetOwner.toLowerCase())
       );
 
+      // Look up working accessToken from existing pool if not provided
+      let tokenToUse = accessToken;
+      if (!tokenToUse) {
+        for (const m of membersList) {
+          if (Array.isArray(m.pages)) {
+            const foundP = m.pages.find((p: any) => p.id === String(pageId).trim() && p.accessToken);
+            if (foundP?.accessToken) {
+              tokenToUse = foundP.accessToken;
+              break;
+            }
+          }
+        }
+      }
+
       const newPageObj = {
         id: String(pageId).trim(),
         name: String(name).trim(),
         category: category || "Facebook Connected Page",
-        accessToken: accessToken || undefined,
+        accessToken: tokenToUse || undefined,
         isActive: true,
       };
 
@@ -257,7 +271,44 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // B. Toggle Page Active Status
+    // B. Disconnect Page from a Member
+    if (action === "disconnect" && pageId) {
+      const { data: memberData } = await supabase
+        .from("bot_settings")
+        .select("dm_template")
+        .eq("id", "vst_members")
+        .maybeSingle();
+
+      let membersList: any[] = [];
+      if (memberData?.dm_template) {
+        try {
+          membersList = JSON.parse(memberData.dm_template);
+        } catch {}
+      }
+
+      let mIndex = membersList.findIndex(
+        (m: any) =>
+          (userId && m.id === userId) ||
+          (ownerName && m.name?.toLowerCase() === ownerName.toLowerCase())
+      );
+
+      if (mIndex >= 0) {
+        const existingPages = Array.isArray(membersList[mIndex].pages) ? membersList[mIndex].pages : [];
+        membersList[mIndex].pages = existingPages.filter((p: any) => p.id !== String(pageId).trim());
+        membersList[mIndex].pagesCount = membersList[mIndex].pages.length;
+
+        await supabase.from("bot_settings").upsert({
+          id: "vst_members",
+          is_active: true,
+          dm_template: JSON.stringify(membersList),
+          updated_at: new Date().toISOString(),
+        });
+      }
+
+      return NextResponse.json({ success: true, disconnectedPageId: pageId });
+    }
+
+    // C. Toggle Page Active Status
     if (!pageId || typeof isActive !== "boolean") {
       return NextResponse.json(
         { success: false, error: "Missing pageId or isActive" },
