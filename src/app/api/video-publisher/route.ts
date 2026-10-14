@@ -15,6 +15,7 @@ export interface VideoPostRecord {
   id: string;
   title: string;
   videoUrl?: string;
+  mediaType?: "video" | "photo" | "text";
   postType: "reels" | "video";
   captionStyle: string;
   targetPagesCount: number;
@@ -159,169 +160,6 @@ function generateUniqueCaptionByNiche(
   return `✨ ព័ត៌មានពិសេសពីទំព័រ ${pageName}! 🌟\n\n${topic}\n\n👉 គុណភាពខ្ពស់ ទំនុកចិត្តពិត និងផ្ដល់អត្ថប្រយោជន៍ពិតប្រាកដជូនអតិថិជន។\n💬 ចុច Send Message ឬទម្លាក់លេខទូរស័ព្ទខាងក្រោម ដើម្បីកុម្ម៉ង់ទិញឥឡូវនេះ! 📦🚚\n\n#Promotion #${pageName.replace(/\s+/g, "")} #គុណភាពខ្ពស់`;
 }
 
-export async function GET() {
-  try {
-    const { data } = await supabase
-      .from("bot_settings")
-      .select("dm_template")
-      .eq("id", "vst_video_posts")
-      .maybeSingle();
-
-    let history: VideoPostRecord[] = [];
-    if (data?.dm_template) {
-      try {
-        history = JSON.parse(data.dm_template);
-      } catch (e) {
-        console.error("Error parsing video post history:", e);
-      }
-    }
-
-    return NextResponse.json({ history });
-  } catch (error) {
-    console.error("Error fetching video publisher history:", error);
-    return NextResponse.json({ history: [] });
-  }
-}
-
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const { action } = body;
-
-    // ACTION 1: Generate High-Thinking AI Captions tailored to each page & style
-    if (action === "generate_captions") {
-      const {
-        baseTopic,
-        captionStyle = "promotion",
-        pages,
-      } = body as {
-        baseTopic: string;
-        captionStyle: "promotion" | "education" | "question" | "testimonial" | "branding";
-        pages: { id: string; name: string; category?: string }[];
-      };
-
-      if (!Array.isArray(pages) || pages.length === 0) {
-        return NextResponse.json(
-          { error: "No pages selected" },
-          { status: 400 }
-        );
-      }
-
-      const apiKey = process.env.GEMINI_API_KEY;
-      const captionsMap: Record<string, string> = {};
-
-      if (apiKey) {
-        try {
-          const pagesPromptList = pages
-            .map(
-              (p, idx) =>
-                `${idx + 1}. Page ID: "${p.id}", Name: "${p.name}", Category: "${p.category || "Health/Beauty"}"`
-            )
-            .join("\n");
-
-          const prompt = `You are an elite Cambodian digital marketing copywriter and conversion rate optimization (CRO) specialist.
-The user wants to publish a Facebook video/Reels across multiple distinct Facebook pages owned by the same company.
-
-USER'S OFFER / TOPIC:
-"${baseTopic}"
-
-CHOSEN CAPTION STRATEGY:
-"${captionStyle}" (Options: promotion = mega discounts/urgency, education = health symptoms & solutions, question = engagement questions, testimonial = real social proof, branding = CEO & official standards)
-
-TARGET PAGES TO GENERATE CAPTIONS FOR:
-${pagesPromptList}
-
-STRICT INSTRUCTIONS:
-1. NO TWO PAGES CAN HAVE SIMILAR TEXT. Each caption MUST be 100% uniquely tailored to that specific page's product and audience niche:
-   - Pages containing "Kidney" or "តម្រងនោម" MUST focus 100% on Kidney health, detoxing, back pain, urination ease, kidney herbal capsules.
-   - Pages containing "ស្រ្តី" or "Emmi Care" MUST focus 100% on female intimate health, irregular periods, white discharge, uterus tightening, youthful skin.
-   - Pages containing "CEO" MUST focus on CEO warranty, VIP standards, official brand guarantee.
-   - Pages containing "Reel" MUST have short, punchy viral hooks.
-2. Structure for each caption:
-   - Line 1: Strong emotional hook with emojis
-   - Line 2-4: The core message/solution tailored to the chosen strategy (${captionStyle})
-   - Line 5-7: 3 bullet points of key benefits
-   - Line 8-9: Irresistible Call-To-Action (e.g. "ចុច Send Message ឥឡូវនេះ" ឬ "ទម្លាក់លេខទូរស័ព្ទ")
-   - Line 10: 4 relevant hashtags in Khmer and English
-3. Output MUST be valid JSON mapping each Page ID to its generated Khmer caption text.
-Example format:
-{
-  "${pages[0]?.id}": "caption in Khmer...",
-  "${pages[1]?.id || "2"}": "caption in Khmer..."
-}`;
-
-          const geminiRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: {
-                  responseMimeType: "application/json",
-                  temperature: 0.85,
-                },
-              }),
-            }
-          );
-
-          if (geminiRes.ok) {
-            const geminiData = await geminiRes.json();
-            const rawJson =
-              geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (rawJson) {
-              const parsed = JSON.parse(rawJson);
-              Object.assign(captionsMap, parsed);
-            }
-          }
-        } catch (geminiError) {
-          console.warn("Gemini caption generation error, using deep niche fallback:", geminiError);
-        }
-      }
-
-      // Guarantee 100% distinct, tailored captions for every page via niche engine
-      pages.forEach((p) => {
-        if (!captionsMap[p.id]) {
-          captionsMap[p.id] = generateUniqueCaptionByNiche(
-            p.id,
-            p.name,
-            captionStyle,
-            baseTopic
-          );
-        }
-      });
-
-      return NextResponse.json({
-        success: true,
-        captions: captionsMap,
-        captionStyle,
-        usedAi: !!apiKey,
-      });
-    }
-
-    // ACTION 2: Publish video to multiple Facebook pages
-    if (action === "publish_video") {
-      const {
-        title,
-        videoUrl,
-        postType = "reels",
-        captionStyle = "promotion",
-        pageCaptions,
-      } = body as {
-        title: string;
-        videoUrl?: string;
-        postType: "reels" | "video";
-        captionStyle: string;
-        pageCaptions: { pageId: string; pageName: string; caption: string }[];
-      };
-
-      if (!Array.isArray(pageCaptions) || pageCaptions.length === 0) {
-        return NextResponse.json(
-          { error: "No target pages provided" },
-          { status: 400 }
-        );
-      }
-
 // Helper to fetch individual Page Access Tokens from Supabase vst_members & env
 async function getPageTokensMap(): Promise<Record<string, string>> {
   const tokenMap: Record<string, string> = {};
@@ -378,6 +216,243 @@ async function getPageTokensMap(): Promise<Record<string, string>> {
   return tokenMap;
 }
 
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    if (searchParams.get("action") === "tokens") {
+      const tokenMap = await getPageTokensMap();
+      return NextResponse.json({ success: true, tokens: tokenMap });
+    }
+
+    const { data } = await supabase
+      .from("bot_settings")
+      .select("dm_template")
+      .eq("id", "vst_video_posts")
+      .maybeSingle();
+
+    let history: VideoPostRecord[] = [];
+    if (data?.dm_template) {
+      try {
+        history = JSON.parse(data.dm_template);
+      } catch (e) {
+        console.error("Error parsing video post history:", e);
+      }
+    }
+
+    return NextResponse.json({ history });
+  } catch (error) {
+    console.error("Error fetching video publisher history:", error);
+    return NextResponse.json({ history: [] });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { action } = body;
+
+    // ACTION 1: Generate High-Thinking AI Captions tailored to each page & style
+    if (action === "generate_captions") {
+      const {
+        videoTitle = "",
+        videoContent = "",
+        baseTopic = "",
+        captionStyle = "promotion",
+        pages,
+      } = body as {
+        videoTitle?: string;
+        videoContent?: string;
+        baseTopic?: string;
+        captionStyle: "promotion" | "education" | "question" | "testimonial" | "branding";
+        pages: { id: string; name: string; category?: string }[];
+      };
+
+      if (!Array.isArray(pages) || pages.length === 0) {
+        return NextResponse.json(
+          { error: "No pages selected" },
+          { status: 400 }
+        );
+      }
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      const captionsMap: Record<string, string> = {};
+
+      // User's provided video description or topic
+      const realContent = (videoContent || baseTopic || videoTitle || "ប្រូម៉ូសិនពិសេស គុណភាពខ្ពស់").trim();
+
+      if (apiKey) {
+        try {
+          const pagesPromptList = pages
+            .map(
+              (p, idx) =>
+                `${idx + 1}. Page ID: "${p.id}", Name: "${p.name}", Category: "${p.category || "Health/Beauty"}"`
+            )
+            .join("\n");
+
+          const prompt = `You are an elite Cambodian digital marketing copywriter and conversion rate optimization (CRO) specialist.
+The user wants to publish a Facebook Video, Reel, or Photo across multiple Facebook pages.
+
+VIDEO/MEDIA TITLE:
+"${videoTitle || "វីដេអូផ្សព្វផ្សាយ"}"
+
+ACTUAL VIDEO / MEDIA CONTENT (WHAT HAPPENS IN THIS VIDEO):
+"${realContent}"
+
+CHOSEN CAPTION STRATEGY:
+"${captionStyle}" (Options: promotion = mega discounts/urgency, education = health symptoms & solutions, question = engagement questions, testimonial = real social proof, branding = CEO & official standards)
+
+TARGET PAGES TO GENERATE CAPTIONS FOR:
+${pagesPromptList}
+
+STRICT COPYWRITING INSTRUCTIONS:
+1. 100% RELEVANT TO THE VIDEO CONTENT: Every caption MUST directly connect to the real content and actions described above ("${realContent}"). Do NOT invent unrelated offers unless mentioned.
+2. NATURAL KHMER COPY: Write authentic, persuasive, conversational Cambodian digital marketing copy that sounds like a top-tier online seller.
+3. UNIQUE NICHE ADAPTATION PER PAGE:
+   - Pages containing "Kidney" or "តម្រងនោម": Focus strictly on Kidney Pro, back pain relief, urination ease, detoxing, quality sleep.
+   - Pages containing "ស្រ្តី" or "Emmi Care": Focus on women's health, irregular periods, white discharge, uterus strength, skin glow.
+   - Pages containing "CEO": Focus on official CEO guarantee, premium quality, original brand warranty.
+   - Pages containing "Reels" or "វីដេអូ": Short, punchy, viral hooks for fast reading.
+4. Structure for each caption:
+   - Line 1: Strong emotional hook with relevant emojis
+   - Line 2-4: Core message directly explaining what the video shows and solving the viewer's pain point
+   - Line 5-7: 3 clear bullet points of benefits
+   - Line 8: Irresistible Call-To-Action (Inbox/Send Message or Comment phone number)
+   - Line 9: 3-4 hashtags in Khmer and English
+5. Output MUST be valid JSON mapping each Page ID to its generated Khmer caption text.
+Example format:
+{
+  "${pages[0]?.id}": "caption in Khmer...",
+  "${pages[1]?.id || "2"}": "caption in Khmer..."
+}`;
+
+          // Try gemini-3.8-flash first, fallback to gemini-3.5-flash-lite
+          let geminiRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                  responseMimeType: "application/json",
+                  temperature: 0.85,
+                },
+              }),
+            }
+          );
+
+          if (!geminiRes.ok) {
+            geminiRes = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  contents: [{ parts: [{ text: prompt }] }],
+                  generationConfig: {
+                    responseMimeType: "application/json",
+                    temperature: 0.85,
+                  },
+                }),
+              }
+            );
+          }
+
+          if (geminiRes.ok) {
+            const geminiData = await geminiRes.json();
+            const rawJson =
+              geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (rawJson) {
+              const parsed = JSON.parse(rawJson);
+              Object.assign(captionsMap, parsed);
+            }
+          }
+        } catch (geminiError) {
+          console.warn("Gemini caption generation error, using deep niche fallback:", geminiError);
+        }
+      }
+
+      // Guarantee 100% distinct, tailored captions for every page via niche engine
+      pages.forEach((p) => {
+        if (!captionsMap[p.id]) {
+          captionsMap[p.id] = generateUniqueCaptionByNiche(
+            p.id,
+            p.name,
+            captionStyle,
+            realContent
+          );
+        }
+      });
+
+      return NextResponse.json({
+        success: true,
+        captions: captionsMap,
+        captionStyle,
+        usedAi: Object.keys(captionsMap).length > 0,
+      });
+    }
+
+    // ACTION: Save post record to history (when published directly from browser)
+    if (action === "save_history") {
+      const { record } = body as { record: VideoPostRecord };
+      if (record) {
+        try {
+          const { data: existingData } = await supabase
+            .from("bot_settings")
+            .select("dm_template")
+            .eq("id", "vst_video_posts")
+            .maybeSingle();
+
+          let historyList: VideoPostRecord[] = [];
+          if (existingData?.dm_template) {
+            try {
+              historyList = JSON.parse(existingData.dm_template);
+            } catch {}
+          }
+
+          historyList.unshift(record);
+          if (historyList.length > 30) historyList = historyList.slice(0, 30);
+
+          await supabase.from("bot_settings").upsert(
+            {
+              id: "vst_video_posts",
+              dm_template: JSON.stringify(historyList),
+              is_active: true,
+            },
+            { onConflict: "id" }
+          );
+        } catch (e) {
+          console.error("Error saving history:", e);
+        }
+      }
+      return NextResponse.json({ success: true });
+    }
+
+    // ACTION 2: Publish video / photo / text to multiple Facebook pages
+    if (action === "publish_video") {
+      const {
+        title,
+        videoUrl,
+        mediaType = "video",
+        postType = "reels",
+        captionStyle = "promotion",
+        pageCaptions,
+      } = body as {
+        title: string;
+        videoUrl?: string;
+        mediaType?: "video" | "photo" | "text";
+        postType: "reels" | "video";
+        captionStyle?: string;
+        pageCaptions: PageCaptionItem[];
+      };
+
+      if (!Array.isArray(pageCaptions) || pageCaptions.length === 0) {
+        return NextResponse.json(
+          { error: "No target pages provided" },
+          { status: 400 }
+        );
+      }
+
       const results: {
         pageId: string;
         pageName: string;
@@ -417,8 +492,23 @@ async function getPageTokensMap(): Promise<Record<string, string>> {
           let fbRes: Response;
           let fbData: any;
 
-          if (isRemoteVideoUrl) {
-            // 1. Post Video or Reel via /videos Graph API
+          if (mediaType === "photo" && isRemoteVideoUrl) {
+            // 1. Post Photo via /photos Graph API
+            fbRes = await fetch(
+              `https://graph.facebook.com/v19.0/${item.pageId}/photos`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  url: videoUrl,
+                  caption: item.caption,
+                  access_token: pageToken,
+                }),
+              }
+            );
+            fbData = await fbRes.json();
+          } else if (isRemoteVideoUrl) {
+            // 2. Post Video or Reel via /videos Graph API
             fbRes = await fetch(
               `https://graph.facebook.com/v19.0/${item.pageId}/videos`,
               {
@@ -434,7 +524,7 @@ async function getPageTokensMap(): Promise<Record<string, string>> {
             );
             fbData = await fbRes.json();
           } else {
-            // 2. Post directly to Page Feed (/feed)
+            // 3. Post directly to Page Feed (/feed) for text posts
             fbRes = await fetch(
               `https://graph.facebook.com/v19.0/${item.pageId}/feed`,
               {
@@ -495,6 +585,7 @@ async function getPageTokensMap(): Promise<Record<string, string>> {
         id: `vpost_${Date.now()}`,
         title: title || "វីដេអូផ្សព្វផ្សាយថ្មី",
         videoUrl: videoUrl?.startsWith("data:") ? "[Uploaded Video File]" : videoUrl,
+        mediaType,
         postType,
         captionStyle,
         targetPagesCount: pageCaptions.length,

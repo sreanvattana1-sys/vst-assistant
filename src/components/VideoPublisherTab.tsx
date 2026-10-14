@@ -26,6 +26,7 @@ import {
   HelpCircle,
   Star,
   Award,
+  Image as ImageIcon,
 } from "lucide-react";
 import { VideoPostRecord } from "@/app/api/video-publisher/route";
 
@@ -92,12 +93,22 @@ export default function VideoPublisherTab({
   // Use official 8 pages pre-configured
   const allTargetPages = OFFICIAL_COMPANY_PAGES;
 
+  // Media Type State: "video" (default) | "photo" | "text"
+  const [mediaType, setMediaType] = useState<"video" | "photo" | "text">("video");
+
   // Video Source State
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string>("");
   const [videoDirectUrl, setVideoDirectUrl] = useState<string>("");
   const [videoTitle, setVideoTitle] = useState("");
   const [postType, setPostType] = useState<"reels" | "video">("reels");
+
+  // Photo Source State
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string>("");
+
+  // Detailed Media Story/Content for Gemini 3.8 Deep Caption Generation
+  const [mediaStory, setMediaStory] = useState<string>("");
 
   // Selected Pages State (default: ALL 8 PAGES PRE-SELECTED)
   const [selectedPageIds, setSelectedPageIds] = useState<string[]>(
@@ -134,6 +145,10 @@ export default function VideoPublisherTab({
   }[] | null>(null);
   const [isReauthorizing, setIsReauthorizing] = useState(false);
 
+  // Refs for file inputs
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
   // Re-authorize Facebook with pages_manage_posts and publish_video permissions
   const triggerFacebookReauth = () => {
     setIsReauthorizing(true);
@@ -147,46 +162,13 @@ export default function VideoPublisherTab({
       redirectUri
     )}&response_type=token&auth_type=rerequest&scope=${scopes}`;
 
-    if ((window as any).FB) {
-      (window as any).FB.login(
-        async (response: any) => {
-          if (response?.authResponse?.accessToken) {
-            try {
-              const apiRes = await fetch("/api/auth/facebook", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  accessToken: response.authResponse.accessToken,
-                }),
-              });
-              const data = await apiRes.json();
-              if (data.success) {
-                alert("បានភ្ជាប់សិទ្ធិ Facebook គ្រប់ជ្រុងជ្រោយជោគជ័យ! លោកអ្នកអាចផុសបានភ្លាមៗ។");
-                window.location.reload();
-              } else {
-                alert("Facebook Error: " + (data.error || "Failed to sync"));
-              }
-            } catch (e: any) {
-              alert("Error: " + e.message);
-            } finally {
-              setIsReauthorizing(false);
-            }
-          } else {
-            setIsReauthorizing(false);
-          }
-        },
-        { scope: scopes, auth_type: "rerequest" }
-      );
-    } else {
-      window.location.href = fbOAuthUrl;
-    }
+    // Direct redirect is 100% immune to popup blockers across all browsers and devices
+    window.location.href = fbOAuthUrl;
   };
 
   // History State
   const [history, setHistory] = useState<VideoPostRecord[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch publish history
   const fetchHistory = async () => {
@@ -209,12 +191,25 @@ export default function VideoPublisherTab({
   }, []);
 
   // Handle local video upload
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleVideoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setVideoFile(file);
       const url = URL.createObjectURL(file);
       setVideoPreviewUrl(url);
+      if (!videoTitle) {
+        setVideoTitle(file.name.replace(/\.[^/.]+$/, ""));
+      }
+    }
+  };
+
+  // Handle local photo upload
+  const handlePhotoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setPhotoFile(file);
+      const url = URL.createObjectURL(file);
+      setPhotoPreviewUrl(url);
       if (!videoTitle) {
         setVideoTitle(file.name.replace(/\.[^/.]+$/, ""));
       }
@@ -238,7 +233,7 @@ export default function VideoPublisherTab({
     setSelectedPageIds([]);
   };
 
-  // Trigger Deep AI Caption Generation
+  // Trigger Deep AI Caption Generation with Gemini 3.8 Flash
   const handleGenerateCaptions = async () => {
     if (selectedPageIds.length === 0) {
       alert("សូមជ្រើសរើស Page យ៉ាងហោចណាស់ ១ ជាមុនសិន!");
@@ -256,6 +251,8 @@ export default function VideoPublisherTab({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "generate_captions",
+          videoTitle: videoTitle || (mediaType === "photo" ? "រូបភាពផ្សព្វផ្សាយ" : "វីដេអូផ្សព្វផ្សាយ"),
+          videoContent: mediaStory,
           baseTopic,
           captionStyle,
           pages: targetPages,
@@ -286,15 +283,20 @@ export default function VideoPublisherTab({
     }));
   };
 
-  // Submit and Publish Video to all selected pages
+  // Submit and Publish Media (Video / Photo / Text) directly to Facebook Pages
   const handlePublishAll = async () => {
     if (selectedPageIds.length === 0) {
       alert("សូមជ្រើសរើស Page ដែលចង់ផុស!");
       return;
     }
 
-    if (!videoPreviewUrl && !videoDirectUrl) {
+    if (mediaType === "video" && !videoFile && !videoDirectUrl) {
       alert("សូម Upload វីដេអូ ឬបញ្ចូលតំណភ្ជាប់វីដេអូជាមុនសិន!");
+      return;
+    }
+
+    if (mediaType === "photo" && !photoFile && !videoDirectUrl) {
+      alert("សូម Upload រូបភាព ឬបញ្ចូលតំណភ្ជាប់រូបភាពជាមុនសិន!");
       return;
     }
 
@@ -303,10 +305,15 @@ export default function VideoPublisherTab({
     setPublishProgress({
       total: selectedPageIds.length,
       completed: 0,
-      status: "កំពុងរៀបចំ និងបញ្ជូនទៅកាន់ Facebook Pages...",
+      status: "កំពុងទាញយក Page Access Token ពីប្រព័ន្ធ...",
     });
 
     try {
+      // 1. Fetch live Page Access Tokens stored in Supabase
+      const tokenRes = await fetch("/api/video-publisher?action=tokens");
+      const tokenJson = tokenRes.ok ? await tokenRes.json() : {};
+      const tokenMap: Record<string, string> = tokenJson.tokens || {};
+
       const targetPages = allTargetPages.filter((p) =>
         selectedPageIds.includes(p.id)
       );
@@ -316,29 +323,183 @@ export default function VideoPublisherTab({
         pageName: p.name,
         caption:
           captionsMap[p.id] ||
-          `${videoTitle || "វីដេអូពិសេស"}\n\n${baseTopic}\n\n#${p.name.replace(/\s+/g, "")}`,
+          `${videoTitle || "ការផ្សព្វផ្សាយពិសេស"}\n\n${mediaStory || baseTopic}\n\n#${p.name.replace(/\s+/g, "")}`,
       }));
 
-      const res = await fetch("/api/video-publisher", {
+      const results: {
+        pageId: string;
+        pageName: string;
+        status: "success" | "error";
+        postId?: string;
+        captionPreview: string;
+        message?: string;
+        needsReauth?: boolean;
+      }[] = [];
+
+      let completedCount = 0;
+
+      for (const item of pageCaptions) {
+        const pageToken = tokenMap[item.pageId];
+        setPublishProgress({
+          total: pageCaptions.length,
+          completed: completedCount,
+          status: `កំពុងផុសទៅកាន់ "${item.pageName}" (${completedCount + 1}/${pageCaptions.length})...`,
+        });
+
+        if (!pageToken) {
+          results.push({
+            pageId: item.pageId,
+            pageName: item.pageName,
+            status: "error",
+            captionPreview: item.caption.slice(0, 70) + "...",
+            message: "ពុំមាន Access Token សម្រាប់ Page នេះទេ (សូម Re-authorize ឡើងវិញ)",
+            needsReauth: true,
+          });
+          completedCount++;
+          continue;
+        }
+
+        try {
+          let fbRes: Response;
+          let fbData: any;
+
+          if (mediaType === "video" && videoFile) {
+            // Direct browser upload to Facebook Graph API (Bypasses Vercel 4.5MB limit)
+            const formData = new FormData();
+            formData.append("source", videoFile);
+            formData.append("description", item.caption);
+            formData.append("title", videoTitle || "Video Post");
+            formData.append("access_token", pageToken);
+
+            fbRes = await fetch(`https://graph.facebook.com/v19.0/${item.pageId}/videos`, {
+              method: "POST",
+              body: formData,
+            });
+            fbData = await fbRes.json();
+          } else if (mediaType === "photo" && photoFile) {
+            // Direct browser upload photo to Facebook Graph API
+            const formData = new FormData();
+            formData.append("source", photoFile);
+            formData.append("caption", item.caption);
+            formData.append("access_token", pageToken);
+
+            fbRes = await fetch(`https://graph.facebook.com/v19.0/${item.pageId}/photos`, {
+              method: "POST",
+              body: formData,
+            });
+            fbData = await fbRes.json();
+          } else if (mediaType === "photo" && videoDirectUrl) {
+            // Photo via remote URL
+            fbRes = await fetch(`https://graph.facebook.com/v19.0/${item.pageId}/photos`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                url: videoDirectUrl,
+                caption: item.caption,
+                access_token: pageToken,
+              }),
+            });
+            fbData = await fbRes.json();
+          } else if (mediaType === "video" && videoDirectUrl) {
+            // Video via remote URL
+            fbRes = await fetch(`https://graph.facebook.com/v19.0/${item.pageId}/videos`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                file_url: videoDirectUrl,
+                description: item.caption,
+                title: videoTitle || "Video Post",
+                access_token: pageToken,
+              }),
+            });
+            fbData = await fbRes.json();
+          } else {
+            // Pure text post via /feed
+            fbRes = await fetch(`https://graph.facebook.com/v19.0/${item.pageId}/feed`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                message: item.caption,
+                access_token: pageToken,
+              }),
+            });
+            fbData = await fbRes.json();
+          }
+
+          if (fbRes.ok && (fbData?.id || fbData?.post_id)) {
+            const realPostId = fbData.id || fbData.post_id;
+            results.push({
+              pageId: item.pageId,
+              pageName: item.pageName,
+              status: "success",
+              postId: realPostId,
+              captionPreview: item.caption.slice(0, 70) + "...",
+              message: "បានផុសទៅកាន់ Facebook Page ផ្ទាល់ជោគជ័យ!",
+            });
+          } else {
+            const errObj = fbData?.error;
+            const errCode = errObj?.code;
+            const errMsg = errObj?.message || "Facebook Graph API returned an error";
+            const isPermError =
+              errCode === 200 ||
+              errCode === 190 ||
+              errMsg.includes("pages_manage_posts") ||
+              errMsg.includes("requires both pages_read_engagement");
+
+            results.push({
+              pageId: item.pageId,
+              pageName: item.pageName,
+              status: "error",
+              captionPreview: item.caption.slice(0, 70) + "...",
+              message: isPermError
+                ? "Facebook ទាមទារសិទ្ធិ 'pages_manage_posts' (សូមចុចប៊ូតុង 'ភ្ជាប់សិទ្ធិឡើងវិញ')"
+                : `Facebook Error: ${errMsg}`,
+              needsReauth: isPermError,
+            });
+          }
+        } catch (postErr: any) {
+          results.push({
+            pageId: item.pageId,
+            pageName: item.pageName,
+            status: "error",
+            captionPreview: item.caption.slice(0, 70) + "...",
+            message: postErr.message || "Failed to communicate with Facebook",
+          });
+        }
+
+        completedCount++;
+      }
+
+      setPublishResults(results);
+
+      // 2. Persist this publish record to Supabase History
+      const record: VideoPostRecord = {
+        id: `vpost_${Date.now()}`,
+        title: videoTitle || (mediaType === "video" ? "វីដេអូផ្សព្វផ្សាយ" : mediaType === "photo" ? "រូបភាពផ្សព្វផ្សាយ" : "អត្ថបទផ្សព្វផ្សាយ"),
+        videoUrl: videoDirectUrl || (mediaType === "video" ? "[Uploaded Video File]" : mediaType === "photo" ? "[Uploaded Photo File]" : "[Text Post]"),
+        mediaType,
+        postType,
+        captionStyle,
+        targetPagesCount: pageCaptions.length,
+        publishedAt: new Date().toISOString(),
+        status: results.every((r) => r.status === "success")
+          ? "completed"
+          : "partial",
+        results,
+      };
+
+      await fetch("/api/video-publisher", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "publish_video",
-          title: videoTitle,
-          videoUrl: videoDirectUrl || videoPreviewUrl,
-          postType,
-          captionStyle,
-          pageCaptions,
+          action: "save_history",
+          record,
         }),
       });
 
-      const json = await res.json();
-      if (res.ok && json.results) {
-        setPublishResults(json.results);
-        fetchHistory();
-      }
+      fetchHistory();
     } catch (err) {
-      console.error("Failed to publish video:", err);
+      console.error("Failed to publish media:", err);
     } finally {
       setIsPublishing(false);
       setPublishProgress(null);
@@ -375,31 +536,78 @@ export default function VideoPublisherTab({
           </div>
         </div>
 
-        {/* Post Type Selector (Reels vs Video) */}
-        <div className="flex items-center bg-slate-800/90 border border-slate-700 rounded-xl p-1 text-xs">
-          <button
-            onClick={() => setPostType("reels")}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-bold transition ${
-              postType === "reels"
-                ? "bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-sm"
-                : "text-slate-400 hover:text-white"
-            }`}
-          >
-            <span>🎥 Facebook Reels</span>
-            <span className="text-[9px] bg-white/20 text-white px-1.5 py-0.2 rounded font-normal">
-              High Reach
-            </span>
-          </button>
-          <button
-            onClick={() => setPostType("video")}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-medium transition ${
-              postType === "video"
-                ? "bg-indigo-600 text-white shadow-sm font-bold"
-                : "text-slate-400 hover:text-white"
-            }`}
-          >
-            <span>📹 Page Video ធម្មតា</span>
-          </button>
+        {/* Media Type & Reels Selector */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Media Type Selector */}
+          <div className="flex items-center bg-slate-800/90 border border-slate-700 rounded-xl p-1 text-xs">
+            <button
+              type="button"
+              onClick={() => setMediaType("video")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition ${
+                mediaType === "video"
+                  ? "bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-sm"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <Video className="h-3.5 w-3.5" />
+              <span>🎬 វីដេអូ</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMediaType("photo")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition ${
+                mediaType === "photo"
+                  ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-sm"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <ImageIcon className="h-3.5 w-3.5" />
+              <span>🖼️ រូបភាព</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMediaType("text")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition ${
+                mediaType === "text"
+                  ? "bg-emerald-600 text-white shadow-sm"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <FileText className="h-3.5 w-3.5" />
+              <span>📝 អត្ថបទ</span>
+            </button>
+          </div>
+
+          {/* Sub-selector for Video: Reels vs Video */}
+          {mediaType === "video" && (
+            <div className="flex items-center bg-slate-800/90 border border-slate-700 rounded-xl p-1 text-xs">
+              <button
+                type="button"
+                onClick={() => setPostType("reels")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition ${
+                  postType === "reels"
+                    ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-sm"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <span>🎥 Reels</span>
+                <span className="text-[9px] bg-white/20 text-white px-1 py-0.2 rounded font-normal">
+                  Viral
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPostType("video")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition ${
+                  postType === "video"
+                    ? "bg-indigo-600 text-white shadow-sm font-bold"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <span>📹 Video ធម្មតា</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -412,10 +620,11 @@ export default function VideoPublisherTab({
           <div>
             <span className="font-bold text-white">សិទ្ធិផុសលើ Facebook (Post Permissions)៖</span>{" "}
             <span className="text-slate-400">
-              ដើម្បីឱ្យការផុសចូល Page បានពិតប្រាកដ Facebook តម្រូវឱ្យ Account មានសិទ្ធិ{" "}
-              <code className="text-pink-400 font-mono text-[11px] bg-slate-800 px-1 py-0.5 rounded">
+              ប្រព័ន្ធបានភ្ជាប់ជាមួយ Page Access Token ផ្លូវការដែលមានសិទ្ធិ{" "}
+              <code className="text-emerald-400 font-mono text-[11px] bg-slate-800 px-1 py-0.5 rounded">
                 pages_manage_posts
-              </code>
+              </code>{" "}
+              រួចរាល់ អាចផុសវីដេអូ រូបភាព និងអត្ថបទបាន ១០០%
             </span>
           </div>
         </div>
@@ -431,63 +640,132 @@ export default function VideoPublisherTab({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* LEFT COLUMN: Video Source & 8 Pre-Connected Pages (5 Cols) */}
+        {/* LEFT COLUMN: Media Source & 8 Pre-Connected Pages (5 Cols) */}
         <div className="lg:col-span-5 space-y-5">
-          {/* 1. Video Source Card */}
+          {/* 1. Media Source Card */}
           <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3.5 shadow-lg">
             <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-              <Video className="h-4 w-4 text-blue-400" />
-              <span>១. ជ្រើសរើសវីដេអូ (Video Source)</span>
+              {mediaType === "video" && <Video className="h-4 w-4 text-blue-400" />}
+              {mediaType === "photo" && <ImageIcon className="h-4 w-4 text-emerald-400" />}
+              {mediaType === "text" && <FileText className="h-4 w-4 text-purple-400" />}
+              <span>
+                ១. {mediaType === "video" ? "ជ្រើសរើសវីដេអូ (Video Source)" : mediaType === "photo" ? "ជ្រើសរើសរូបភាព (Photo Source)" : "ការផុសអត្ថបទសុទ្ធ (Text Post)"}
+              </span>
             </h3>
 
-            {/* Video Preview or Upload Dropzone */}
-            {videoPreviewUrl ? (
-              <div className="relative rounded-xl overflow-hidden border border-slate-700 bg-black aspect-video flex items-center justify-center">
-                <video
-                  src={videoPreviewUrl}
-                  controls
-                  className="w-full h-full object-contain"
+            {/* VIDEO MEDIA DISPLAY */}
+            {mediaType === "video" && (
+              <>
+                {videoPreviewUrl ? (
+                  <div className="relative rounded-xl overflow-hidden border border-slate-700 bg-black aspect-video flex items-center justify-center">
+                    <video
+                      src={videoPreviewUrl}
+                      controls
+                      className="w-full h-full object-contain"
+                    />
+                    <button
+                      onClick={() => {
+                        setVideoFile(null);
+                        setVideoPreviewUrl("");
+                      }}
+                      className="absolute top-2 right-2 p-1.5 rounded-full bg-black/70 text-slate-300 hover:text-white"
+                      title="លុបចេញ"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => videoInputRef.current?.click()}
+                    className="border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition bg-slate-900/40 hover:bg-slate-800/40"
+                  >
+                    <div className="p-3 rounded-full bg-indigo-500/10 text-indigo-400 mb-2">
+                      <UploadCloud className="h-6 w-6" />
+                    </div>
+                    <span className="text-xs font-bold text-white">
+                      ចុច Upload វីដេអូ (MP4, MOV, WebM)
+                    </span>
+                    <span className="text-[11px] text-slate-500 mt-1">
+                      ផុសផ្ទាល់ពី Browser ទៅកាន់ Facebook គ្មានដែនកំណត់ទំហំ (No Size Limit)
+                    </span>
+                  </div>
+                )}
+
+                <input
+                  ref={videoInputRef}
+                  type="file"
+                  accept="video/*"
+                  onChange={handleVideoFileChange}
+                  className="hidden"
                 />
-                <button
-                  onClick={() => {
-                    setVideoFile(null);
-                    setVideoPreviewUrl("");
-                  }}
-                  className="absolute top-2 right-2 p-1.5 rounded-full bg-black/70 text-slate-300 hover:text-white"
-                  title="លុបចេញ"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            ) : (
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition bg-slate-900/40 hover:bg-slate-800/40"
-              >
-                <div className="p-3 rounded-full bg-indigo-500/10 text-indigo-400 mb-2">
-                  <UploadCloud className="h-6 w-6" />
+              </>
+            )}
+
+            {/* PHOTO MEDIA DISPLAY */}
+            {mediaType === "photo" && (
+              <>
+                {photoPreviewUrl ? (
+                  <div className="relative rounded-xl overflow-hidden border border-slate-700 bg-black aspect-video flex items-center justify-center">
+                    <img
+                      src={photoPreviewUrl}
+                      alt="Preview"
+                      className="w-full h-full object-contain"
+                    />
+                    <button
+                      onClick={() => {
+                        setPhotoFile(null);
+                        setPhotoPreviewUrl("");
+                      }}
+                      className="absolute top-2 right-2 p-1.5 rounded-full bg-black/70 text-slate-300 hover:text-white"
+                      title="លុបចេញ"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => photoInputRef.current?.click()}
+                    className="border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition bg-slate-900/40 hover:bg-slate-800/40"
+                  >
+                    <div className="p-3 rounded-full bg-emerald-500/10 text-emerald-400 mb-2">
+                      <UploadCloud className="h-6 w-6" />
+                    </div>
+                    <span className="text-xs font-bold text-white">
+                      ចុច Upload រូបភាព (JPG, PNG, WEBP)
+                    </span>
+                    <span className="text-[11px] text-slate-500 mt-1">
+                      រូបភាពច្បាស់សម្រាប់ផុសលើ Facebook Page Feed ផ្ទាល់
+                    </span>
+                  </div>
+                )}
+
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoFileChange}
+                  className="hidden"
+                />
+              </>
+            )}
+
+            {/* TEXT POST NOTICE */}
+            {mediaType === "text" && (
+              <div className="p-4 rounded-xl bg-purple-950/30 border border-purple-500/30 space-y-2">
+                <div className="flex items-center gap-2 text-purple-300 font-bold text-xs">
+                  <FileText className="h-4 w-4" />
+                  <span>ផុសជាអត្ថបទសុទ្ធ (Status Feed Post)</span>
                 </div>
-                <span className="text-xs font-bold text-white">
-                  ចុច Upload វីដេអូ (MP4, MOV, WebM)
-                </span>
-                <span className="text-[11px] text-slate-500 mt-1">
-                  គាំទ្រវីដេអូទំហំច្បាស់សម្រាប់ Facebook Reels និង Post ធម្មតា
-                </span>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  ការផុសនេះនឹងបញ្ជូនអត្ថបទ Caption ដែល AI បានសរសេរចូលទៅកាន់ផ្ទាំង Feed នៃ Page ទាំង ៨ ដោយផ្ទាល់ ដោយពុំចាំបាច់មានរូបភាព ឬវីដេអូនោះឡើយ។
+                </p>
               </div>
             )}
 
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="video/*"
-              onChange={handleFileChange}
-              className="hidden"
-            />
-
-            {/* Video Title Input */}
+            {/* Post Title Input */}
             <div>
               <label className="block text-[11px] font-semibold text-slate-400 mb-1">
-                ចំណងជើងវីដេអូ (Video Title):
+                ចំណងជើងការផុស ({mediaType === "video" ? "Video Title" : mediaType === "photo" ? "Photo Title" : "Post Title"}):
               </label>
               <input
                 type="text"
@@ -498,24 +776,27 @@ export default function VideoPublisherTab({
               />
             </div>
 
-            {/* Direct Video URL Alternative */}
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-400 mb-1">
-                ឬ ដាក់តំណភ្ជាប់វីដេអូផ្ទាល់ (Direct Video URL):
-              </label>
-              <input
-                type="text"
-                placeholder="https://example.com/video.mp4"
-                value={videoDirectUrl}
-                onChange={(e) => {
-                  setVideoDirectUrl(e.target.value);
-                  if (e.target.value.startsWith("http")) {
-                    setVideoPreviewUrl(e.target.value);
-                  }
-                }}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-              />
-            </div>
+            {/* Direct Media URL Alternative (Video or Photo) */}
+            {mediaType !== "text" && (
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                  ឬ ដាក់តំណភ្ជាប់ {mediaType === "video" ? "វីដេអូ" : "រូបភាព"} ផ្ទាល់ (Direct URL):
+                </label>
+                <input
+                  type="text"
+                  placeholder={mediaType === "video" ? "https://example.com/video.mp4" : "https://example.com/image.jpg"}
+                  value={videoDirectUrl}
+                  onChange={(e) => {
+                    setVideoDirectUrl(e.target.value);
+                    if (e.target.value.startsWith("http")) {
+                      if (mediaType === "video") setVideoPreviewUrl(e.target.value);
+                      if (mediaType === "photo") setPhotoPreviewUrl(e.target.value);
+                    }
+                  }}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+            )}
           </div>
 
           {/* 2. Target Pages Selector Card (PRE-CONNECTED 8 PAGES) */}
@@ -723,17 +1004,48 @@ export default function VideoPublisherTab({
               </div>
             </div>
 
+            {/* Dedicated Media Story Content for Gemini 3.8 AI */}
+            <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-3 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="block text-[11px] font-bold text-amber-300 flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+                  <span>
+                    ខ្លឹមសារជាក់ស្ដែងក្នុង{mediaType === "video" ? "វីដេអូ" : mediaType === "photo" ? "រូបភាព" : "ការផ្សព្វផ្សាយ"} (Media Story / Content)៖
+                  </span>
+                </label>
+                <span className="text-[10px] text-amber-300 bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 rounded-full font-semibold">
+                  ★ AI គិតតាមនេះ ១០០%
+                </span>
+              </div>
+              <textarea
+                rows={3}
+                value={mediaStory}
+                onChange={(e) => setMediaStory(e.target.value)}
+                placeholder={
+                  mediaType === "video"
+                    ? "ឧ. វីដេអូនេះបង្ហាញពីការណែនាំពីអត្ថប្រយោជន៍ Kidney Pro ជួយបំបាត់នោមញឹកពេលយប់ និងចុកចង្កេះ, មានការបង្ហាញកំប៉ុងផលិតផល និងប្រូម៉ូសិនទិញ ២ ថែម ១..."
+                    : mediaType === "photo"
+                    ? "ឧ. រូបភាពបង្ហាញពីប្រអប់ Emmi សុខភាពស្រ្តី ជួយបំបាត់ធ្លាក់ស រដូវមិនទៀង និងមានបញ្ចុះតម្លៃពិសេស ៥០% ថ្ងៃនេះ..."
+                    : "ឧ. ខ្លឹមសារនៃការផ្សព្វផ្សាយអំពីផលិតផល និងទំនុកចិត្ត..."
+                }
+                className="w-full bg-slate-900 border border-amber-500/40 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 font-sans shadow-inner"
+              />
+              <p className="text-[10px] text-amber-200/70">
+                * បញ្ចូលព័ត៌មានលម្អិតពីអ្វីដែលកើតឡើងក្នុង{mediaType === "video" ? "វីដេអូ" : "រូបភាព"} ដើម្បីឱ្យ Gemini AI សរសេរ Caption ស៊ីគ្នានឹងសាច់រឿងពិតប្រាកដ ១០០% មិនខុសទៀតឡើយ។
+              </p>
+            </div>
+
             {/* Base Topic Textarea */}
             <div>
               <label className="block text-[11px] font-semibold text-slate-300 mb-1.5">
-                គំនិតគោល / ប្រូម៉ូសិន ឬចំណុចសំខាន់នៃវីដេអូ (Base Topic):
+                គំនិតបន្ថែម / Promotion ឬ Call-to-Action (Extra Topic & Offer):
               </label>
               <textarea
                 rows={2}
                 value={baseTopic}
                 onChange={(e) => setBaseTopic(e.target.value)}
-                placeholder="ឧ. ប្រូម៉ូសិនទិញ ២ ថែម ១ ថែរក្សាសុខភាព..."
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                placeholder="ឧ. ប្រូម៉ូសិនពិសេសប្រចាំខែ ទិញ ២ ថែម ១ គុណភាពស្ដង់ដារខ្ពស់ ដឹកជញ្ជូនឥតគិតថ្លៃទូទាំង ២៥ ខេត្ត/ក្រុង"
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 font-sans"
               />
             </div>
 
@@ -855,11 +1167,36 @@ export default function VideoPublisherTab({
               )}
               <span>
                 {isPublishing
-                  ? "កំពុងបញ្ជូន និងផុសទៅកាន់ Pages ទាំង ៨..."
-                  : `🚀 បញ្ជាផុសទៅកាន់ ${selectedPageIds.length} Pages ព្រមគ្នាឥឡូវនេះ`}
+                  ? `កំពុងបញ្ជូន និងផុសទៅកាន់ Pages (${publishProgress?.completed || 0}/${selectedPageIds.length})...`
+                  : `🚀 បញ្ជាផុស${mediaType === "video" ? "វីដេអូ" : mediaType === "photo" ? "រូបភាព" : "អត្ថបទ"}ទៅកាន់ ${selectedPageIds.length} Pages ព្រមគ្នា`}
               </span>
             </button>
           </div>
+
+          {/* Progress Indicator */}
+          {publishProgress && (
+            <div className="p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/40 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-indigo-300 flex items-center gap-2">
+                  <RefreshCw className="h-4 w-4 animate-spin text-cyan-400" />
+                  <span>{publishProgress.status}</span>
+                </span>
+                <span className="font-mono text-cyan-300 font-bold">
+                  {publishProgress.completed}/{publishProgress.total} Pages
+                </span>
+              </div>
+              <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-gradient-to-r from-blue-500 via-indigo-500 to-cyan-400 h-2 transition-all duration-300 rounded-full"
+                  style={{
+                    width: `${Math.round(
+                      (publishProgress.completed / (publishProgress.total || 1)) * 100
+                    )}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Results Notification */}
           {publishResults && (
@@ -970,8 +1307,8 @@ export default function VideoPublisherTab({
           <table className="w-full text-left">
             <thead className="bg-slate-800/40 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
               <tr>
-                <th className="py-3 px-4">ចំណងជើងវីដេអូ</th>
-                <th className="py-3 px-4">ទម្រង់</th>
+                <th className="py-3 px-4">ចំណងជើង</th>
+                <th className="py-3 px-4">ប្រភេទមេឌា & ទម្រង់</th>
                 <th className="py-3 px-4">យុទ្ធសាស្ត្រ Caption</th>
                 <th className="py-3 px-4">ចំនួន Pages</th>
                 <th className="py-3 px-4">កាលបរិច្ឆេទ</th>
@@ -992,9 +1329,19 @@ export default function VideoPublisherTab({
                       {item.title}
                     </td>
                     <td className="py-3 px-4">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 border border-slate-700 text-purple-300">
-                        {item.postType === "reels" ? "🎥 Reels" : "📹 Video"}
-                      </span>
+                      {item.mediaType === "photo" ? (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-950/60 text-blue-300 border border-blue-500/30">
+                          🖼️ Photo
+                        </span>
+                      ) : item.mediaType === "text" ? (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950/60 text-emerald-300 border border-emerald-500/30">
+                          📝 Text
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 border border-slate-700 text-purple-300">
+                          {item.postType === "reels" ? "🎥 Reels" : "📹 Video"}
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 px-4">
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-950/60 text-indigo-300 border border-indigo-500/30 uppercase">
