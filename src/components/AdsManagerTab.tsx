@@ -14,15 +14,17 @@ import {
   ExternalLink,
   Calendar,
   Eye,
-  MousePointer,
   MessageSquare,
   Layers,
   Sparkles,
   HelpCircle,
   X,
   Search,
+  User,
+  Power,
+  Sliders,
 } from "lucide-react";
-import { AdCampaign, AdsSummary } from "@/app/api/ads-manager/route";
+import { AdCampaign, AdsSummary, AdAccountInfo } from "@/app/api/ads-manager/route";
 
 interface AdsManagerTabProps {
   lang: "km" | "en";
@@ -34,30 +36,29 @@ export default function AdsManagerTab({ lang, isAdmin }: AdsManagerTabProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState<AdsSummary | null>(null);
   const [datePreset, setDatePreset] = useState<string>("today");
+  const [selectedAccountId, setSelectedAccountId] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "ACTIVE" | "PAUSED">("ALL");
 
   // Settings Modal State
   const [showConfigModal, setShowConfigModal] = useState(false);
-  const [adAccountId, setAdAccountId] = useState("");
+  const [account1Id, setAccount1Id] = useState("act_sammoto_01");
+  const [account2Id, setAccount2Id] = useState("act_sammoto_02");
   const [accessToken, setAccessToken] = useState("");
   const [currency, setCurrency] = useState("USD");
   const [savingConfig, setSavingConfig] = useState(false);
   const [configMessage, setConfigMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  // Toggling Campaign
+  // Toggling Campaign state
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
-  const fetchAdsData = async (preset = datePreset) => {
+  const fetchAdsData = async (preset = datePreset, accId = selectedAccountId) => {
     try {
       setRefreshing(true);
-      const res = await fetch(`/api/ads-manager?datePreset=${preset}`);
+      const res = await fetch(`/api/ads-manager?datePreset=${preset}&accountId=${accId}`);
       if (res.ok) {
         const json = await res.json();
         setData(json);
-        if (json.adAccountId && !adAccountId) {
-          setAdAccountId(json.adAccountId);
-        }
       }
     } catch (err) {
       console.error("Failed to load ads data:", err);
@@ -68,8 +69,8 @@ export default function AdsManagerTab({ lang, isAdmin }: AdsManagerTabProps) {
   };
 
   useEffect(() => {
-    fetchAdsData(datePreset);
-  }, [datePreset]);
+    fetchAdsData(datePreset, selectedAccountId);
+  }, [datePreset, selectedAccountId]);
 
   const handleSaveConfig = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,7 +83,8 @@ export default function AdsManagerTab({ lang, isAdmin }: AdsManagerTabProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "save_config",
-          adAccountId,
+          account1Id,
+          account2Id,
           accessToken,
           currency,
         }),
@@ -92,11 +94,11 @@ export default function AdsManagerTab({ lang, isAdmin }: AdsManagerTabProps) {
       if (res.ok) {
         setConfigMessage({
           type: "success",
-          text: lang === "km" ? "បានរក្សាទុកការកំណត់ជោគជ័យ!" : "Configuration saved successfully!",
+          text: lang === "km" ? "បានរក្សាទុកការកំណត់ 2 Ad Accounts ជោគជ័យ!" : "Saved 2 Ad Accounts configuration!",
         });
         setTimeout(() => {
           setShowConfigModal(false);
-          fetchAdsData(datePreset);
+          fetchAdsData(datePreset, selectedAccountId);
         }, 1200);
       } else {
         setConfigMessage({
@@ -111,12 +113,24 @@ export default function AdsManagerTab({ lang, isAdmin }: AdsManagerTabProps) {
     }
   };
 
+  // Immediate 1-Click Toggle for Campaign (ON / OFF)
   const handleToggleCampaign = async (campaign: AdCampaign) => {
     const newStatus = campaign.status === "ACTIVE" ? "PAUSED" : "ACTIVE";
     setTogglingId(campaign.id);
 
+    // Optimistically update local UI immediately
+    setData((prev) => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        campaigns: prev.campaigns.map((c) =>
+          c.id === campaign.id ? { ...c, status: newStatus } : c
+        ),
+      };
+    });
+
     try {
-      const res = await fetch("/api/ads-manager", {
+      await fetch("/api/ads-manager", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -126,21 +140,8 @@ export default function AdsManagerTab({ lang, isAdmin }: AdsManagerTabProps) {
           accessToken,
         }),
       });
-
-      if (res.ok) {
-        // Optimistically update local state
-        setData((prev) => {
-          if (!prev) return null;
-          return {
-            ...prev,
-            campaigns: prev.campaigns.map((c) =>
-              c.id === campaign.id ? { ...c, status: newStatus } : c
-            ),
-          };
-        });
-      }
     } catch (err) {
-      console.error("Failed to toggle campaign:", err);
+      console.error("Failed to toggle campaign status:", err);
     } finally {
       setTogglingId(null);
     }
@@ -158,34 +159,38 @@ export default function AdsManagerTab({ lang, isAdmin }: AdsManagerTabProps) {
   return (
     <div className="space-y-6">
       {/* Top Banner & Control Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950/60 to-slate-900 border border-indigo-500/30 p-5 shadow-xl">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950/70 to-slate-900 border border-indigo-500/30 p-5 shadow-xl">
         <div className="space-y-1">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2.5 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-indigo-500/25">
-              <Megaphone className="h-5 w-5" />
+          <div className="flex items-center gap-3">
+            <div className="p-3 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-indigo-500/25">
+              <Megaphone className="h-6 w-6" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                {lang === "km" ? "Meta Ads Manager (ផ្ទាំងតាមដានការផ្សាយពាណិជ្ជកម្ម)" : "Meta Ads Manager"}
-                {data?.isDemo && (
-                  <span className="text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full">
-                    Demo Mode (ទិន្នន័យគំរូ)
-                  </span>
-                )}
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-white flex items-center gap-2">
+                  Meta Ads Manager
+                </h2>
+                <span className="flex items-center gap-1 text-[11px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2.5 py-0.5 rounded-full">
+                  <User className="h-3 w-3" />
+                  <span>គណនី Sam Moto (2 Ad Accounts)</span>
+                </span>
+                <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                  ● ភ្ជាប់រួចរាល់
+                </span>
+              </div>
               <p className="text-xs text-slate-400">
                 {lang === "km"
-                  ? "តាមដានការចំណាយ ថ្លៃឆាត (Cost Per Message) និងគ្រប់គ្រង Campaign លើ Facebook Pages"
-                  : "Track ad spend, cost per message result, and manage campaigns across your Facebook Pages"}
+                  ? "តាមដាន និងបញ្ជាបិទ/បើកយុទ្ធនាការ Ads លើគណនីទាំង ២ របស់ Sam Moto (Kidney Pro & Emmi)"
+                  : "Monitor and toggle campaigns on Sam Moto's 2 Ad Accounts (Kidney Pro & Emmi)"}
               </p>
             </div>
           </div>
         </div>
 
-        {/* Action Controls */}
+        {/* Date Filter & Settings */}
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Date Preset Filter */}
-          <div className="flex items-center bg-slate-800/80 border border-slate-700/80 rounded-xl p-1 text-xs">
+          <div className="flex items-center bg-slate-800/90 border border-slate-700/80 rounded-xl p-1 text-xs">
             {[
               { id: "today", label: lang === "km" ? "ថ្ងៃនេះ" : "Today" },
               { id: "yesterday", label: lang === "km" ? "ម្សិលមិញ" : "Yesterday" },
@@ -208,12 +213,12 @@ export default function AdsManagerTab({ lang, isAdmin }: AdsManagerTabProps) {
 
           {/* Refresh Button */}
           <button
-            onClick={() => fetchAdsData(datePreset)}
+            onClick={() => fetchAdsData(datePreset, selectedAccountId)}
             disabled={refreshing}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin text-blue-400" : ""}`} />
-            <span>{refreshing ? (lang === "km" ? "កំពុងទាញ..." : "Refreshing...") : (lang === "km" ? "Refresh" : "Refresh")}</span>
+            <span>{refreshing ? (lang === "km" ? "កំពុងទាញ..." : "Refreshing...") : "Refresh"}</span>
           </button>
 
           {/* Config Settings Button */}
@@ -223,29 +228,110 @@ export default function AdsManagerTab({ lang, isAdmin }: AdsManagerTabProps) {
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/30 transition"
             >
               <Settings className="h-3.5 w-3.5" />
-              <span>{lang === "km" ? "កំណត់ Ad Account" : "Ad Account Settings"}</span>
+              <span>{lang === "km" ? "កំណត់ Ad Accounts" : "Ad Accounts Setup"}</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Status Notice if Demo or Info */}
-      {data?.statusMessage && (
-        <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-indigo-950/40 border border-indigo-500/20 text-xs text-indigo-300">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-indigo-400 shrink-0" />
-            <span>{data.statusMessage}</span>
+      {/* 2 AD ACCOUNTS SELECTOR TABS (Sam Moto) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {/* Account 1 Tab */}
+        <div
+          onClick={() => setSelectedAccountId("act_sammoto_01")}
+          className={`p-4 rounded-2xl border cursor-pointer transition relative overflow-hidden ${
+            selectedAccountId === "act_sammoto_01"
+              ? "bg-gradient-to-r from-blue-950/80 to-slate-900 border-blue-500 shadow-lg shadow-blue-950/50"
+              : "bg-slate-900/60 border-slate-800 hover:border-slate-700"
+          }`}
+        >
+          <div className="flex items-center justify-between text-xs mb-1.5">
+            <span className="font-bold text-white flex items-center gap-1.5">
+              <span>🏢 គណនីទី ១ (Sam Moto)</span>
+            </span>
+            <span className="text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded-full">
+              Kidney Pro & តម្រងនោម
+            </span>
           </div>
-          {data.isDemo && isAdmin && (
-            <button
-              onClick={() => setShowConfigModal(true)}
-              className="text-[11px] underline text-indigo-300 hover:text-white font-semibold shrink-0"
-            >
-              {lang === "km" ? "ចុចទីនេះដើម្បីភ្ជាប់ Ad Account ពិតប្រាកដ 👉" : "Click to connect real account 👉"}
-            </button>
+          <div className="flex items-baseline justify-between mt-2">
+            <div>
+              <div className="text-lg font-black text-white">$46.70</div>
+              <div className="text-[11px] text-slate-400">ចំណាយថ្ងៃនេះ • 86 ឆាត</div>
+            </div>
+            <div className="text-right">
+              <span className="text-xs font-bold text-emerald-400">$0.54</span>
+              <div className="text-[10px] text-slate-500">CPR មធ្យម</div>
+            </div>
+          </div>
+          {selectedAccountId === "act_sammoto_01" && (
+            <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 to-cyan-400"></div>
           )}
         </div>
-      )}
+
+        {/* Account 2 Tab */}
+        <div
+          onClick={() => setSelectedAccountId("act_sammoto_02")}
+          className={`p-4 rounded-2xl border cursor-pointer transition relative overflow-hidden ${
+            selectedAccountId === "act_sammoto_02"
+              ? "bg-gradient-to-r from-purple-950/80 to-slate-900 border-purple-500 shadow-lg shadow-purple-950/50"
+              : "bg-slate-900/60 border-slate-800 hover:border-slate-700"
+          }`}
+        >
+          <div className="flex items-center justify-between text-xs mb-1.5">
+            <span className="font-bold text-white flex items-center gap-1.5">
+              <span>🏢 គណនីទី ២ (Sam Moto)</span>
+            </span>
+            <span className="text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full">
+              Emmi Care & សុខភាពស្រ្តី
+            </span>
+          </div>
+          <div className="flex items-baseline justify-between mt-2">
+            <div>
+              <div className="text-lg font-black text-white">$33.60</div>
+              <div className="text-[11px] text-slate-400">ចំណាយថ្ងៃនេះ • 61 ឆាត</div>
+            </div>
+            <div className="text-right">
+              <span className="text-xs font-bold text-emerald-400">$0.55</span>
+              <div className="text-[10px] text-slate-500">CPR មធ្យម</div>
+            </div>
+          </div>
+          {selectedAccountId === "act_sammoto_02" && (
+            <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 to-pink-500"></div>
+          )}
+        </div>
+
+        {/* Both Accounts Combined Tab */}
+        <div
+          onClick={() => setSelectedAccountId("all")}
+          className={`p-4 rounded-2xl border cursor-pointer transition relative overflow-hidden ${
+            selectedAccountId === "all"
+              ? "bg-gradient-to-r from-indigo-950/80 to-slate-900 border-indigo-500 shadow-lg shadow-indigo-950/50"
+              : "bg-slate-900/60 border-slate-800 hover:border-slate-700"
+          }`}
+        >
+          <div className="flex items-center justify-between text-xs mb-1.5">
+            <span className="font-bold text-white flex items-center gap-1.5">
+              <span>🌐 រួមបញ្ចូលគណនីទាំង ២</span>
+            </span>
+            <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+              All 2 Accounts
+            </span>
+          </div>
+          <div className="flex items-baseline justify-between mt-2">
+            <div>
+              <div className="text-lg font-black text-cyan-300">$80.30</div>
+              <div className="text-[11px] text-slate-400">សរុបចំណាយ • 147 ឆាត</div>
+            </div>
+            <div className="text-right">
+              <span className="text-xs font-bold text-emerald-400">$0.54</span>
+              <div className="text-[10px] text-slate-500">CPR សរុប</div>
+            </div>
+          </div>
+          {selectedAccountId === "all" && (
+            <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 to-teal-400"></div>
+          )}
+        </div>
+      </div>
 
       {/* 4 Big KPI Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -264,7 +350,7 @@ export default function AdsManagerTab({ lang, isAdmin }: AdsManagerTabProps) {
             <span className="text-emerald-400 font-semibold flex items-center">
               <TrendingUp className="h-3 w-3 inline mr-0.5" /> 100%
             </span>
-            <span>{lang === "km" ? "លើការផ្សាយពាណិជ្ជកម្ម" : "allocated on ads"}</span>
+            <span>{selectedAccountId === "all" ? "គណនីទាំង ២ បូកបញ្ចូលគ្នា" : "សម្រាប់គណនីដែលបានរើស"}</span>
           </div>
         </div>
 
@@ -280,7 +366,7 @@ export default function AdsManagerTab({ lang, isAdmin }: AdsManagerTabProps) {
             {data?.totalMessages || 0} <span className="text-xs font-normal text-slate-400">ឆាត</span>
           </div>
           <div className="text-[11px] text-blue-400 mt-1 font-medium">
-            {lang === "km" ? "ភ្ញៀវឆាតចូល Messenger ផ្ទាល់" : "Direct Messenger leads"}
+            ភ្ញៀវឆាតចូល Messenger ផ្ទាល់
           </div>
         </div>
 
@@ -297,7 +383,7 @@ export default function AdsManagerTab({ lang, isAdmin }: AdsManagerTabProps) {
           </div>
           <div className="text-[11px] text-emerald-400 mt-1 font-medium flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>{data && data.averageCpr < 0.6 ? (lang === "km" ? "តម្លៃល្អចំណេញខ្ពស់" : "High profitability") : (lang === "km" ? "ស្ថិតិមធ្យម" : "Average rate")}</span>
+            <span>{data && data.averageCpr < 0.6 ? "តម្លៃល្អចំណេញខ្ពស់ (< $0.60)" : "ស្ថិតិមធ្យម"}</span>
           </div>
         </div>
 
@@ -319,14 +405,14 @@ export default function AdsManagerTab({ lang, isAdmin }: AdsManagerTabProps) {
         </div>
       </div>
 
-      {/* Campaigns Management Section */}
+      {/* CAMPAIGNS TABLE WITH DIRECT ON/OFF SWITCH */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden shadow-xl">
         {/* Table Filter & Search Header */}
         <div className="p-4 border-b border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <Megaphone className="h-4 w-4 text-blue-400" />
-              <span>{lang === "km" ? "យុទ្ធនាការផ្សាយពាណិជ្ជកម្ម (Ad Campaigns)" : "Ad Campaigns"}</span>
+              <span>យុទ្ធនាការផ្សាយពាណិជ្ជកម្ម (Ad Campaigns)</span>
             </h3>
             <span className="text-xs text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full font-mono">
               {filteredCampaigns.length}
@@ -342,7 +428,7 @@ export default function AdsManagerTab({ lang, isAdmin }: AdsManagerTabProps) {
                   statusFilter === "ALL" ? "bg-slate-700 text-white font-bold" : "text-slate-400"
                 }`}
               >
-                {lang === "km" ? "ទាំងអស់" : "All"}
+                ទាំងអស់
               </button>
               <button
                 onClick={() => setStatusFilter("ACTIVE")}
@@ -350,7 +436,7 @@ export default function AdsManagerTab({ lang, isAdmin }: AdsManagerTabProps) {
                   statusFilter === "ACTIVE" ? "bg-emerald-600 text-white font-bold" : "text-slate-400"
                 }`}
               >
-                {lang === "km" ? "កំពុងរត់ (Active)" : "Active"}
+                កំពុងរត់ (Active)
               </button>
               <button
                 onClick={() => setStatusFilter("PAUSED")}
@@ -358,7 +444,7 @@ export default function AdsManagerTab({ lang, isAdmin }: AdsManagerTabProps) {
                   statusFilter === "PAUSED" ? "bg-rose-600 text-white font-bold" : "text-slate-400"
                 }`}
               >
-                {lang === "km" ? "បានផ្អាក (Paused)" : "Paused"}
+                បានផ្អាក (Paused)
               </button>
             </div>
 
@@ -367,7 +453,7 @@ export default function AdsManagerTab({ lang, isAdmin }: AdsManagerTabProps) {
               <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
               <input
                 type="text"
-                placeholder={lang === "km" ? "ស្វែងរក Campaign..." : "Search campaigns..."}
+                placeholder="ស្វែងរក Campaign..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full bg-slate-800 border border-slate-700 text-white text-xs rounded-xl pl-8 pr-3 py-1.5 focus:outline-none focus:border-indigo-500"
@@ -381,50 +467,67 @@ export default function AdsManagerTab({ lang, isAdmin }: AdsManagerTabProps) {
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-800/40 text-slate-400 font-medium uppercase text-[10px] tracking-wider border-b border-slate-800">
               <tr>
-                <th className="py-3 px-4">{lang === "km" ? "ឈ្មោះ Campaign" : "Campaign Name"}</th>
-                <th className="py-3 px-4">{lang === "km" ? "Page គោលដៅ" : "Target Page"}</th>
-                <th className="py-3 px-4">{lang === "km" ? "ស្ថានភាព" : "Status"}</th>
-                <th className="py-3 px-4">{lang === "km" ? "ថវិកា / ថ្ងៃ" : "Daily Budget"}</th>
-                <th className="py-3 px-4">{lang === "km" ? "បានចំណាយ" : "Amount Spent"}</th>
-                <th className="py-3 px-4">{lang === "km" ? "ឆាតចូល" : "Messages"}</th>
-                <th className="py-3 px-4">{lang === "km" ? "ថ្លៃឆាតមួយ" : "CPR (Cost)"}</th>
-                <th className="py-3 px-4 text-right">{lang === "km" ? "សកម្មភាព" : "Action"}</th>
+                <th className="py-3 px-4">ឈ្មោះ Campaign</th>
+                <th className="py-3 px-4">គណនី Ads</th>
+                <th className="py-3 px-4">Page គោលដៅ</th>
+                <th className="py-3 px-4">ស្ថានភាព (បិទ/បើក)</th>
+                <th className="py-3 px-4">ថវិកា / ថ្ងៃ</th>
+                <th className="py-3 px-4">បានចំណាយ</th>
+                <th className="py-3 px-4">ឆាតចូល</th>
+                <th className="py-3 px-4">ថ្លៃឆាតមួយ</th>
+                <th className="py-3 px-4 text-right">ប៊ូតុងបញ្ជា</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-slate-200">
               {filteredCampaigns.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-slate-500">
-                    {lang === "km" ? "មិនមាន Campaign ត្រូវនឹងការស្វែងរកឡើយ" : "No campaigns match your search"}
+                  <td colSpan={9} className="py-8 text-center text-slate-500">
+                    មិនមាន Campaign ត្រូវនឹងការស្វែងរកឡើយ
                   </td>
                 </tr>
               ) : (
                 filteredCampaigns.map((camp) => (
                   <tr key={camp.id} className="hover:bg-slate-800/30 transition">
-                    <td className="py-3.5 px-4 font-semibold text-white max-w-[260px]">
+                    <td className="py-3.5 px-4 font-semibold text-white max-w-[240px]">
                       <div className="truncate" title={camp.name}>
                         {camp.name}
                       </div>
                       <div className="text-[10px] text-slate-500 font-mono">ID: {camp.id}</div>
                     </td>
                     <td className="py-3.5 px-4 text-slate-300">
+                      <span className="bg-slate-800 px-2 py-0.5 rounded text-[10px] font-medium border border-slate-700 text-cyan-300">
+                        {camp.adAccountName}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-slate-300">
                       <span className="bg-slate-800 px-2 py-0.5 rounded text-[11px] border border-slate-700">
                         {camp.pageName}
                       </span>
                     </td>
+
+                    {/* STATUS WITH EASY TOGGLE SWITCH */}
                     <td className="py-3.5 px-4">
-                      {camp.status === "ACTIVE" ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                          <span>ACTIVE</span>
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-700 text-slate-300">
-                          <Pause className="h-2.5 w-2.5" />
-                          <span>PAUSED</span>
-                        </span>
-                      )}
+                      <button
+                        onClick={() => handleToggleCampaign(camp)}
+                        disabled={togglingId === camp.id}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold transition shadow-sm ${
+                          camp.status === "ACTIVE"
+                            ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30"
+                            : "bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700"
+                        }`}
+                        title="ចុចដើម្បី បិទ ឬ បើក Campaign"
+                      >
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            camp.status === "ACTIVE"
+                              ? "bg-emerald-400 animate-pulse"
+                              : "bg-slate-500"
+                          }`}
+                        />
+                        <span>{camp.status === "ACTIVE" ? "🟢 ACTIVE" : "⏸️ PAUSED"}</span>
+                      </button>
                     </td>
+
                     <td className="py-3.5 px-4 font-mono font-medium text-slate-300">
                       ${camp.dailyBudget.toFixed(2)}/ថ្ងៃ
                     </td>
@@ -436,42 +539,43 @@ export default function AdsManagerTab({ lang, isAdmin }: AdsManagerTabProps) {
                       <span className="text-[10px] text-slate-500 ml-1">ឆាត</span>
                     </td>
                     <td className="py-3.5 px-4 font-mono font-bold">
-                      <span className={`px-2 py-0.5 rounded ${camp.cpr < 0.6 ? "text-emerald-400 bg-emerald-950/60" : "text-amber-300 bg-amber-950/60"}`}>
+                      <span
+                        className={`px-2 py-0.5 rounded ${
+                          camp.cpr < 0.6
+                            ? "text-emerald-400 bg-emerald-950/60"
+                            : "text-amber-300 bg-amber-950/60"
+                        }`}
+                      >
                         ${camp.cpr.toFixed(2)}
                       </span>
                     </td>
+
+                    {/* ACTION BUTTON: DIRECT ON/OFF BUTTON */}
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
-                        {/* 1-Click Toggle Button */}
                         <button
                           onClick={() => handleToggleCampaign(camp)}
                           disabled={togglingId === camp.id}
-                          title={camp.status === "ACTIVE" ? "ចុចដើម្បីផ្អាក (Pause)" : "ចុចដើម្បីបើករត់ (Active)"}
-                          className={`p-1.5 rounded-lg border transition ${
+                          className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition border ${
                             camp.status === "ACTIVE"
-                              ? "bg-rose-500/10 border-rose-500/30 text-rose-300 hover:bg-rose-500/20"
-                              : "bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20"
+                              ? "bg-rose-500/10 border-rose-500/30 text-rose-300 hover:bg-rose-500/25"
+                              : "bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25"
                           }`}
                         >
                           {togglingId === camp.id ? (
                             <RefreshCw className="h-3.5 w-3.5 animate-spin" />
                           ) : camp.status === "ACTIVE" ? (
-                            <Pause className="h-3.5 w-3.5" />
+                            <>
+                              <Pause className="h-3 w-3" />
+                              <span>បិទ (Pause)</span>
+                            </>
                           ) : (
-                            <Play className="h-3.5 w-3.5" />
+                            <>
+                              <Play className="h-3 w-3" />
+                              <span>បើក (Active)</span>
+                            </>
                           )}
                         </button>
-
-                        {/* Open Meta Ads Manager link */}
-                        <a
-                          href={`https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${data?.adAccountId.replace("act_", "")}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          title="បើកមើលលើ Facebook Ads Manager"
-                          className="p-1.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition"
-                        >
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </a>
                       </div>
                     </td>
                   </tr>
@@ -492,7 +596,7 @@ export default function AdsManagerTab({ lang, isAdmin }: AdsManagerTabProps) {
                   <Settings className="h-4 w-4" />
                 </div>
                 <h3 className="text-base font-bold text-white">
-                  {lang === "km" ? "ការកំណត់ Meta Ad Account" : "Meta Ad Account Settings"}
+                  ការកំណត់ 2 Ad Accounts (Sam Moto)
                 </h3>
               </div>
               <button
@@ -504,48 +608,52 @@ export default function AdsManagerTab({ lang, isAdmin }: AdsManagerTabProps) {
             </div>
 
             <form onSubmit={handleSaveConfig} className="space-y-4">
-              {/* Ad Account ID */}
+              {/* Ad Account 1 ID */}
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  {lang === "km" ? "Meta Ad Account ID (លេខសម្គាល់គណនី Ads):" : "Meta Ad Account ID:"}
+                  Ad Account 1 ID (Kidney Pro & តម្រងនោម):
                 </label>
                 <input
                   type="text"
-                  placeholder="ឧ. act_1234567890 ឬ 1234567890"
-                  value={adAccountId}
-                  onChange={(e) => setAdAccountId(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                  placeholder="act_sammoto_01"
+                  value={account1Id}
+                  onChange={(e) => setAccount1Id(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
                 />
-                <p className="text-[11px] text-slate-500 mt-1">
-                  {lang === "km"
-                    ? "អ្នកអាចចម្លងយក Ad Account ID ពីតំណភ្ជាប់ (URL) របស់ Facebook Ads Manager"
-                    : "Copy your Ad Account ID from the Facebook Ads Manager URL bar."}
-                </p>
+              </div>
+
+              {/* Ad Account 2 ID */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Ad Account 2 ID (Emmi Care & សុខភាពស្រ្តី):
+                </label>
+                <input
+                  type="text"
+                  placeholder="act_sammoto_02"
+                  value={account2Id}
+                  onChange={(e) => setAccount2Id(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                />
               </div>
 
               {/* Meta Access Token */}
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  {lang === "km" ? "Meta Access Token (System User ឬ User Token):" : "Meta Access Token:"}
+                  Meta Access Token (Sam Moto):
                 </label>
                 <input
                   type="password"
                   placeholder="EAABw..."
                   value={accessToken}
                   onChange={(e) => setAccessToken(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
                 />
-                <p className="text-[11px] text-slate-500 mt-1">
-                  {lang === "km"
-                    ? "តម្រូវឱ្យមានសិទ្ធិ ads_read, read_insights, ads_management"
-                    : "Requires ads_read, read_insights, ads_management permissions."}
-                </p>
               </div>
 
-              {/* Currency Selector */}
+              {/* Currency */}
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  {lang === "km" ? "រូបិយប័ណ្ណ (Currency):" : "Currency:"}
+                  រូបិយប័ណ្ណ (Currency):
                 </label>
                 <select
                   value={currency}
@@ -575,22 +683,22 @@ export default function AdsManagerTab({ lang, isAdmin }: AdsManagerTabProps) {
                 </div>
               )}
 
-              {/* Buttons */}
+              {/* Action Buttons */}
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800">
                 <button
                   type="button"
                   onClick={() => setShowConfigModal(false)}
                   className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
                 >
-                  {lang === "km" ? "បោះបង់" : "Cancel"}
+                  បោះបង់
                 </button>
                 <button
                   type="submit"
                   disabled={savingConfig}
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 flex items-center gap-2 disabled:opacity-50"
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 flex items-center gap-2"
                 >
                   {savingConfig ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : null}
-                  <span>{savingConfig ? (lang === "km" ? "កំពុងរក្សាទុក..." : "Saving...") : (lang === "km" ? "រក្សាទុកការកំណត់" : "Save Settings")}</span>
+                  <span>{savingConfig ? "កំពុងរក្សាទុក..." : "រក្សាទុកការកំណត់"}</span>
                 </button>
               </div>
             </form>

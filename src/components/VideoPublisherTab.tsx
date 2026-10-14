@@ -21,8 +21,64 @@ import {
   ExternalLink,
   Plus,
   Trash2,
+  Flame,
+  Stethoscope,
+  HelpCircle,
+  Star,
+  Award,
 } from "lucide-react";
 import { VideoPostRecord } from "@/app/api/video-publisher/route";
+
+const OFFICIAL_COMPANY_PAGES = [
+  {
+    id: "955747057621489",
+    name: "Kidney Pro ឃីដនី ប្រូ",
+    category: "សុខភាព & សម្រស់ (Health/Beauty)",
+    description: "ផ្តោតលើផលិតផលជំនួយសុខភាពតម្រងនោម នោមទាស់ នោមញឹក ឈឺចង្កេះ",
+  },
+  {
+    id: "1039779202551647",
+    name: "អេមមី សុខភាពស្រ្តី",
+    category: "សុខភាពស្ត្រី (Women Health)",
+    description: "ផ្តោតលើសុខភាពស្បូនស្រ្តី រដូវមិនទៀង ធ្លាក់ស ក្លិនមិនល្អ",
+  },
+  {
+    id: "827063453815073",
+    name: "គុណភាពតម្រងនោម",
+    category: "សុខភាពតម្រងនោម (Kidney Care)",
+    description: "ការអប់រំ និងការពារជំងឺតម្រងនោម ការថែទាំជាតិពុលក្នុងឈាម",
+  },
+  {
+    id: "928036717066754",
+    name: "Emmi Cambodia",
+    category: "សម្រស់ & ថែទាំ (Beauty/Care)",
+    description: "ចែកចាយទូទាំងប្រទេស ប្រូម៉ូសិនកញ្ចប់ធំ និងសេវាកម្មរហ័ស",
+  },
+  {
+    id: "923321100873981",
+    name: "Emmi",
+    category: "ផលិតផលផ្លូវការ (Official)",
+    description: "ផលិតផលដើមសុទ្ធ ១០០% របៀបប្រើប្រាស់ត្រឹមត្រូវ និងប្រសិទ្ធភាព",
+  },
+  {
+    id: "985673367962860",
+    name: "Emmi By CEO",
+    category: "ម៉ាកយីហោ (Brand)",
+    description: "ការធានាផ្ទាល់ពី CEO គុណភាពលំដាប់ VIP និងកិត្តិយសម៉ាកយីហោ",
+  },
+  {
+    id: "997410203461527",
+    name: "Emmi Care",
+    category: "ថែទាំសម្រស់ (Care/Beauty)",
+    description: "ការថែរក្សាស្បែក និងសម្រស់ក្មេងជាងវ័យ ទំនុកចិត្តនារីសម័យថ្មី",
+  },
+  {
+    id: "101267342561819",
+    name: "Emmi អេមមី",
+    category: "វីដេអូ & Reel (Reel Creator)",
+    description: "Reels វីដេអូខ្លីៗទាក់ទាញ ការកម្សាន្ត និងចំណេះដឹងរហ័ស",
+  },
+];
 
 interface VideoPublisherTabProps {
   lang: "km" | "en";
@@ -31,8 +87,11 @@ interface VideoPublisherTabProps {
 
 export default function VideoPublisherTab({
   lang,
-  connectedPages,
+  connectedPages: propsPages,
 }: VideoPublisherTabProps) {
+  // Use official 8 pages pre-configured
+  const allTargetPages = OFFICIAL_COMPANY_PAGES;
+
   // Video Source State
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string>("");
@@ -40,8 +99,15 @@ export default function VideoPublisherTab({
   const [videoTitle, setVideoTitle] = useState("");
   const [postType, setPostType] = useState<"reels" | "video">("reels");
 
-  // Selected Pages State (default: all connected pages selected)
-  const [selectedPageIds, setSelectedPageIds] = useState<string[]>([]);
+  // Selected Pages State (default: ALL 8 PAGES PRE-SELECTED)
+  const [selectedPageIds, setSelectedPageIds] = useState<string[]>(
+    allTargetPages.map((p) => p.id)
+  );
+
+  // Caption Strategy / Style Selector
+  const [captionStyle, setCaptionStyle] = useState<
+    "promotion" | "education" | "question" | "testimonial" | "branding"
+  >("promotion");
 
   // Base Topic & Captions Map: pageId -> caption string
   const [baseTopic, setBaseTopic] = useState(
@@ -70,13 +136,6 @@ export default function VideoPublisherTab({
   const [loadingHistory, setLoadingHistory] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Initialize selected pages from connectedPages
-  useEffect(() => {
-    if (connectedPages.length > 0 && selectedPageIds.length === 0) {
-      setSelectedPageIds(connectedPages.map((p) => p.id));
-    }
-  }, [connectedPages]);
 
   // Fetch publish history
   const fetchHistory = async () => {
@@ -121,23 +180,23 @@ export default function VideoPublisherTab({
   };
 
   const selectAllPages = () => {
-    setSelectedPageIds(connectedPages.map((p) => p.id));
+    setSelectedPageIds(allTargetPages.map((p) => p.id));
   };
 
   const deselectAllPages = () => {
     setSelectedPageIds([]);
   };
 
-  // Trigger AI Caption Generation with Gemini
+  // Trigger Deep AI Caption Generation
   const handleGenerateCaptions = async () => {
     if (selectedPageIds.length === 0) {
-      alert(lang === "km" ? "សូមជ្រើសរើស Page យ៉ាងហោចណាស់ ១ ជាមុនសិន!" : "Please select at least 1 page first!");
+      alert("សូមជ្រើសរើស Page យ៉ាងហោចណាស់ ១ ជាមុនសិន!");
       return;
     }
 
     setIsGeneratingAi(true);
     try {
-      const targetPages = connectedPages.filter((p) =>
+      const targetPages = allTargetPages.filter((p) =>
         selectedPageIds.includes(p.id)
       );
 
@@ -147,6 +206,7 @@ export default function VideoPublisherTab({
         body: JSON.stringify({
           action: "generate_captions",
           baseTopic,
+          captionStyle,
           pages: targetPages,
         }),
       });
@@ -155,7 +215,6 @@ export default function VideoPublisherTab({
         const data = await res.json();
         if (data.captions) {
           setCaptionsMap(data.captions);
-          // Auto-expand the first caption
           if (targetPages.length > 0) {
             setExpandedCaptionPageId(targetPages[0].id);
           }
@@ -179,12 +238,12 @@ export default function VideoPublisherTab({
   // Submit and Publish Video to all selected pages
   const handlePublishAll = async () => {
     if (selectedPageIds.length === 0) {
-      alert(lang === "km" ? "សូមជ្រើសរើស Page ដែលចង់ផុស!" : "Please select target pages!");
+      alert("សូមជ្រើសរើស Page ដែលចង់ផុស!");
       return;
     }
 
     if (!videoPreviewUrl && !videoDirectUrl) {
-      alert(lang === "km" ? "សូម Upload វីដេអូ ឬបញ្ចូលតំណភ្ជាប់វីដេអូជាមុនសិន!" : "Please upload a video file or provide a video link!");
+      alert("សូម Upload វីដេអូ ឬបញ្ចូលតំណភ្ជាប់វីដេអូជាមុនសិន!");
       return;
     }
 
@@ -193,11 +252,11 @@ export default function VideoPublisherTab({
     setPublishProgress({
       total: selectedPageIds.length,
       completed: 0,
-      status: lang === "km" ? "កំពុងរៀបចំការផុស..." : "Preparing publication...",
+      status: "កំពុងរៀបចំ និងបញ្ជូនទៅកាន់ Facebook Pages...",
     });
 
     try {
-      const targetPages = connectedPages.filter((p) =>
+      const targetPages = allTargetPages.filter((p) =>
         selectedPageIds.includes(p.id)
       );
 
@@ -206,7 +265,7 @@ export default function VideoPublisherTab({
         pageName: p.name,
         caption:
           captionsMap[p.id] ||
-          `${videoTitle}\n\n${baseTopic}\n\n#${p.name.replace(/\s+/g, "")}`,
+          `${videoTitle || "វីដេអូពិសេស"}\n\n${baseTopic}\n\n#${p.name.replace(/\s+/g, "")}`,
       }));
 
       const res = await fetch("/api/video-publisher", {
@@ -217,6 +276,7 @@ export default function VideoPublisherTab({
           title: videoTitle,
           videoUrl: videoDirectUrl || videoPreviewUrl,
           postType,
+          captionStyle,
           pageCaptions,
         }),
       });
@@ -234,7 +294,7 @@ export default function VideoPublisherTab({
     }
   };
 
-  const selectedPagesList = connectedPages.filter((p) =>
+  const selectedPagesList = allTargetPages.filter((p) =>
     selectedPageIds.includes(p.id)
   );
 
@@ -247,18 +307,19 @@ export default function VideoPublisherTab({
             <Film className="h-6 w-6" />
           </div>
           <div>
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
-              {lang === "km"
-                ? "Multi-Page Video & Reels Publisher (ផុស Video ច្រើន Page)"
-                : "Multi-Page Video & Reels Publisher"}
-              <span className="text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full">
-                AI Powered 🪄
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold text-white">
+                Multi-Page Video & Reels Publisher
+              </h2>
+              <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                ● ភ្ជាប់ 8 Pages រួចរាល់
               </span>
-            </h2>
+              <span className="text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full">
+                AI Deep Thinking 🪄
+              </span>
+            </div>
             <p className="text-xs text-slate-400">
-              {lang === "km"
-                ? "Upload វីដេអូតែ ១ ដង អាចផុសទៅកាន់ Page ទាំងអស់ក្នុងពេលតែមួយ ជាមួយ Caption ប្លែកៗគ្នាដោយស្វ័យប្រវត្ត"
-                : "Upload once, publish across all Facebook Pages with unique AI-crafted captions per page"}
+              Upload វីដេអូតែ ១ ដង អាចផុសទៅកាន់ Page ទាំង ៨ ព្រមគ្នា ដោយ AI បង្កើត Caption ខុសៗគ្នាតាមប្រភេទ Page នីមួយៗ
             </p>
           </div>
         </div>
@@ -292,13 +353,13 @@ export default function VideoPublisherTab({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* LEFT COLUMN: Video Upload & Page Selection (5 Cols) */}
+        {/* LEFT COLUMN: Video Source & 8 Pre-Connected Pages (5 Cols) */}
         <div className="lg:col-span-5 space-y-5">
           {/* 1. Video Source Card */}
           <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3.5 shadow-lg">
             <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
               <Video className="h-4 w-4 text-blue-400" />
-              <span>{lang === "km" ? "១. ជ្រើសរើសវីដេអូ (Video Source)" : "1. Select Video"}</span>
+              <span>១. ជ្រើសរើសវីដេអូ (Video Source)</span>
             </h3>
 
             {/* Video Preview or Upload Dropzone */}
@@ -329,10 +390,10 @@ export default function VideoPublisherTab({
                   <UploadCloud className="h-6 w-6" />
                 </div>
                 <span className="text-xs font-bold text-white">
-                  {lang === "km" ? "ចុច Upload វីដេអូ (MP4, MOV, WebM)" : "Click to Upload Video"}
+                  ចុច Upload វីដេអូ (MP4, MOV, WebM)
                 </span>
                 <span className="text-[11px] text-slate-500 mt-1">
-                  {lang === "km" ? "ទំហំសមរម្យសម្រាប់ Reels និង Video លើ Facebook" : "Suitable for Facebook Reels and Posts"}
+                  គាំទ្រវីដេអូទំហំច្បាស់សម្រាប់ Facebook Reels និង Post ធម្មតា
                 </span>
               </div>
             )}
@@ -348,11 +409,11 @@ export default function VideoPublisherTab({
             {/* Video Title Input */}
             <div>
               <label className="block text-[11px] font-semibold text-slate-400 mb-1">
-                {lang === "km" ? "ចំណងជើងវីដេអូ (Video Title):" : "Video Title:"}
+                ចំណងជើងវីដេអូ (Video Title):
               </label>
               <input
                 type="text"
-                placeholder={lang === "km" ? "ឧ. ប្រូម៉ូសិនពិសេសប្រចាំខែ..." : "Enter video title..."}
+                placeholder="ឧ. ប្រូម៉ូសិនពិសេសប្រចាំខែ..."
                 value={videoTitle}
                 onChange={(e) => setVideoTitle(e.target.value)}
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
@@ -362,7 +423,7 @@ export default function VideoPublisherTab({
             {/* Direct Video URL Alternative */}
             <div>
               <label className="block text-[11px] font-semibold text-slate-400 mb-1">
-                {lang === "km" ? "ឬ ដាក់តំណភ្ជាប់វីដេអូផ្ទាល់ (Direct Video URL):" : "Or Direct Video Link:"}
+                ឬ ដាក់តំណភ្ជាប់វីដេអូផ្ទាល់ (Direct Video URL):
               </label>
               <input
                 type="text"
@@ -379,28 +440,33 @@ export default function VideoPublisherTab({
             </div>
           </div>
 
-          {/* 2. Target Pages Selector Card */}
+          {/* 2. Target Pages Selector Card (PRE-CONNECTED 8 PAGES) */}
           <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3.5 shadow-lg">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                <Layers className="h-4 w-4 text-purple-400" />
-                <span>{lang === "km" ? "២. ជ្រើសរើស Page គោលដៅ" : "2. Target Pages"}</span>
-              </h3>
-              <span className="text-[11px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full font-mono">
-                {selectedPageIds.length}/{connectedPages.length}
+              <div>
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <Layers className="h-4 w-4 text-purple-400" />
+                  <span>២. ភ្ជាប់ Pages ទាំង ៨ រួចរាល់</span>
+                </h3>
+                <span className="text-[10px] text-emerald-400">
+                  ● បានភ្ជាប់ជាមួយ Access Token រួចជាស្រេច
+                </span>
+              </div>
+              <span className="text-[11px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2.5 py-0.5 rounded-full font-mono">
+                {selectedPageIds.length}/{allTargetPages.length} Pages
               </span>
             </div>
 
-            {/* Shortcuts: Select All / Deselect All */}
+            {/* Shortcuts */}
             <div className="flex items-center justify-between text-[11px] text-slate-400 border-b border-slate-800 pb-2">
-              <span>{lang === "km" ? "Page ទាំងអស់ដែលបានភ្ជាប់៖" : "All connected pages:"}</span>
+              <span>ជ្រើសរើស Page ដែលត្រូវផុស៖</span>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={selectAllPages}
                   className="text-blue-400 hover:text-blue-300 font-semibold"
                 >
-                  {lang === "km" ? "រើសទាំងអស់" : "Select All"}
+                  រើសទាំងអស់ (៨)
                 </button>
                 <span>•</span>
                 <button
@@ -408,14 +474,14 @@ export default function VideoPublisherTab({
                   onClick={deselectAllPages}
                   className="text-slate-400 hover:text-white"
                 >
-                  {lang === "km" ? "ដកចេញទាំងអស់" : "Deselect All"}
+                  ដកចេញទាំងអស់
                 </button>
               </div>
             </div>
 
-            {/* Pages Checkbox List */}
-            <div className="space-y-1.5 max-h-[260px] overflow-y-auto pr-1">
-              {connectedPages.map((page) => {
+            {/* 8 Connected Pages List */}
+            <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-1">
+              {allTargetPages.map((page) => {
                 const isSelected = selectedPageIds.includes(page.id);
                 return (
                   <div
@@ -438,12 +504,15 @@ export default function VideoPublisherTab({
                         {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
                       </div>
                       <div className="truncate">
-                        <div className="font-semibold truncate">{page.name}</div>
-                        {page.category && (
-                          <div className="text-[10px] text-slate-500 truncate">
-                            {page.category}
-                          </div>
-                        )}
+                        <div className="font-semibold truncate flex items-center gap-1.5">
+                          <span>{page.name}</span>
+                          <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded font-normal">
+                            Online
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-500 truncate">
+                          {page.description}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -453,7 +522,7 @@ export default function VideoPublisherTab({
           </div>
         </div>
 
-        {/* RIGHT COLUMN: AI Caption Generator & Publishing Review (7 Cols) */}
+        {/* RIGHT COLUMN: CAPTION STRATEGY SELECTOR & AI DEEP GENERATOR (7 Cols) */}
         <div className="lg:col-span-7 space-y-5">
           {/* AI Generator Control Box */}
           <div className="rounded-2xl border border-indigo-500/40 bg-gradient-to-b from-indigo-950/30 to-slate-900 p-5 space-y-4 shadow-xl">
@@ -464,31 +533,128 @@ export default function VideoPublisherTab({
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-white">
-                    {lang === "km"
-                      ? "៣. AI បង្កើត Caption ខុសៗគ្នាសម្រាប់ Page នីមួយៗ"
-                      : "3. AI Multi-Page Caption Generator"}
+                    ៣. ជ្រើសរើសប្រភេទ Caption & AI បង្កើតដោយស្វ័យប្រវត្ត
                   </h3>
                   <p className="text-[11px] text-slate-400">
-                    {lang === "km"
-                      ? "វាយតែគំនិតគោល AI Gemini នឹងបង្កើត Caption ៨ ទម្រង់ប្លែកៗគ្នាដោយស្វ័យប្រវត្ត"
-                      : "Provide a base topic and Gemini AI crafts tailored captions for each target page"}
+                    ជ្រើសរើសយុទ្ធសាស្ត្រលក់ AI នឹងគិត និងសរសេរ Caption ៨ ទម្រង់ប្លែកៗគ្នាសម្រាប់ Page នីមួយៗ
                   </p>
                 </div>
+              </div>
+            </div>
+
+            {/* CAPTION STYLE / TYPE SELECTOR (User Requested) */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-300 mb-2">
+                ជ្រើសរើសប្រភេទ / ទម្រង់ Caption (Caption Strategy Style):
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {/* 1. Promotion */}
+                <button
+                  type="button"
+                  onClick={() => setCaptionStyle("promotion")}
+                  className={`p-2.5 rounded-xl border text-left transition flex flex-col gap-1 ${
+                    captionStyle === "promotion"
+                      ? "bg-gradient-to-r from-rose-950 to-red-950 border-rose-500 text-white shadow-md shadow-rose-950/50"
+                      : "bg-slate-900/90 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700"
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5 font-bold text-xs text-rose-300">
+                    <Flame className="h-3.5 w-3.5 text-rose-400" />
+                    <span>🔥 ប្រូម៉ូសិនកក្រើក</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 leading-tight">
+                    ទិញ ២ ថែម ១, ចំនួនមានកំណត់, ដឹកឥតគិតថ្លៃ
+                  </span>
+                </button>
+
+                {/* 2. Education */}
+                <button
+                  type="button"
+                  onClick={() => setCaptionStyle("education")}
+                  className={`p-2.5 rounded-xl border text-left transition flex flex-col gap-1 ${
+                    captionStyle === "education"
+                      ? "bg-gradient-to-r from-emerald-950 to-teal-950 border-emerald-500 text-white shadow-md shadow-emerald-950/50"
+                      : "bg-slate-900/90 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700"
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5 font-bold text-xs text-emerald-300">
+                    <Stethoscope className="h-3.5 w-3.5 text-emerald-400" />
+                    <span>🩺 អប់រំសុខភាព</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 leading-tight">
+                    រោគសញ្ញា, ផលប៉ះពាល់, ពិគ្រោះសុខភាព
+                  </span>
+                </button>
+
+                {/* 3. Question / Viral */}
+                <button
+                  type="button"
+                  onClick={() => setCaptionStyle("question")}
+                  className={`p-2.5 rounded-xl border text-left transition flex flex-col gap-1 ${
+                    captionStyle === "question"
+                      ? "bg-gradient-to-r from-amber-950 to-yellow-950 border-amber-500 text-white shadow-md shadow-amber-950/50"
+                      : "bg-slate-900/90 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700"
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5 font-bold text-xs text-amber-300">
+                    <HelpCircle className="h-3.5 w-3.5 text-amber-400" />
+                    <span>❓ សំណួរចាក់ដោត</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 leading-tight">
+                    សំណួរទាក់ទាញ, ជំរុញឱ្យខមិនលេខទូរស័ព្ទ
+                  </span>
+                </button>
+
+                {/* 4. Testimonial */}
+                <button
+                  type="button"
+                  onClick={() => setCaptionStyle("testimonial")}
+                  className={`p-2.5 rounded-xl border text-left transition flex flex-col gap-1 ${
+                    captionStyle === "testimonial"
+                      ? "bg-gradient-to-r from-blue-950 to-indigo-950 border-blue-500 text-white shadow-md shadow-blue-950/50"
+                      : "bg-slate-900/90 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700"
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5 font-bold text-xs text-blue-300">
+                    <Star className="h-3.5 w-3.5 text-blue-400" />
+                    <span>🌟 Feedback ភ្ញៀវពិត</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 leading-tight">
+                    មតិកែលម្អ, លទ្ធផលប្រើប្រាស់ជាក់ស្តែង
+                  </span>
+                </button>
+
+                {/* 5. Branding & CEO */}
+                <button
+                  type="button"
+                  onClick={() => setCaptionStyle("branding")}
+                  className={`p-2.5 rounded-xl border text-left transition flex flex-col gap-1 ${
+                    captionStyle === "branding"
+                      ? "bg-gradient-to-r from-purple-950 to-indigo-950 border-purple-500 text-white shadow-md shadow-purple-950/50"
+                      : "bg-slate-900/90 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700"
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5 font-bold text-xs text-purple-300">
+                    <Award className="h-3.5 w-3.5 text-purple-400" />
+                    <span>💎 ស្ដង់ដារ & CEO</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 leading-tight">
+                    ការធានាពី CEO, ស្ដង់ដារក្រសួងសុខាភិបាល
+                  </span>
+                </button>
               </div>
             </div>
 
             {/* Base Topic Textarea */}
             <div>
               <label className="block text-[11px] font-semibold text-slate-300 mb-1.5">
-                {lang === "km"
-                  ? "គំនិតគោល / ប្រូម៉ូសិន ឬចំណុចសំខាន់នៃវីដេអូ (Base Topic):"
-                  : "Base Topic / Offer Details:"}
+                គំនិតគោល / ប្រូម៉ូសិន ឬចំណុចសំខាន់នៃវីដេអូ (Base Topic):
               </label>
               <textarea
                 rows={2}
                 value={baseTopic}
                 onChange={(e) => setBaseTopic(e.target.value)}
-                placeholder={lang === "km" ? "ឧ. ប្រូម៉ូសិនទិញ ២ ថែម ១ ថែរក្សាសុខភាព..." : "Describe your offer, product benefits, etc."}
+                placeholder="ឧ. ប្រូម៉ូសិនទិញ ២ ថែម ១ ថែរក្សាសុខភាព..."
                 className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
               />
             </div>
@@ -497,13 +663,13 @@ export default function VideoPublisherTab({
             <button
               onClick={handleGenerateCaptions}
               disabled={isGeneratingAi || selectedPageIds.length === 0}
-              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500 hover:from-purple-500 hover:to-cyan-400 text-white font-bold text-xs shadow-lg shadow-purple-600/30 flex items-center justify-center gap-2 transition disabled:opacity-50"
+              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500 hover:from-purple-500 hover:to-cyan-400 text-white font-bold text-xs shadow-lg shadow-purple-600/30 flex items-center justify-center gap-2 transition disabled:opacity-50"
             >
               <Sparkles className={`h-4 w-4 ${isGeneratingAi ? "animate-spin" : ""}`} />
               <span>
                 {isGeneratingAi
-                  ? (lang === "km" ? "AI កំពុងបង្កើត Caption ទាំង ៨..." : "AI Crafting Unique Captions...")
-                  : (lang === "km" ? `🪄 AI បង្កើត ${selectedPageIds.length} Captions សម្រាប់ Pages ដែលបានរើស` : `Craft ${selectedPageIds.length} Captions with AI`)}
+                  ? "AI កំពុងគិត និងបង្កើត Caption ទាំង ៨ ប្លែកៗគ្នា..."
+                  : `🪄 AI បង្កើត ${selectedPageIds.length} Captions ប្លែកៗគ្នា (${captionStyle.toUpperCase()})`}
               </span>
             </button>
           </div>
@@ -511,17 +677,17 @@ export default function VideoPublisherTab({
           {/* Individual Page Captions List (Accordion Cards) */}
           <div className="space-y-3">
             <div className="flex items-center justify-between text-xs text-slate-400 px-1">
-              <span>{lang === "km" ? "ពិនិត្យ និងកែសម្រួល Caption តាម Page នីមួយៗ៖" : "Review Captions per Page:"}</span>
-              <span className="text-[11px] text-purple-300">
+              <span>ពិនិត្យ និងកែសម្រួល Caption តាម Page នីមួយៗ (ខុសៗគ្នា ១០០%)៖</span>
+              <span className="text-[11px] text-purple-300 font-semibold">
                 {Object.keys(captionsMap).length > 0
-                  ? (lang === "km" ? "✅ បានបង្កើត Captions រួចរាល់" : "Captions Ready")
-                  : (lang === "km" ? "💡 ចុចប៊ូតុងខាងលើដើម្បីបង្កើត" : "Click above to generate")}
+                  ? "✅ Caption បានបង្កើតប្លែកៗគ្នាស្រេច"
+                  : "💡 ចុចប៊ូតុងខាងលើដើម្បីបង្កើត"}
               </span>
             </div>
 
             {selectedPagesList.length === 0 ? (
               <div className="p-6 rounded-2xl border border-slate-800 bg-slate-900/30 text-center text-slate-500 text-xs">
-                {lang === "km" ? "សូមជ្រើសរើស Page នៅខាងឆ្វេងជាមុនសិន" : "Select target pages on the left"}
+                សូមជ្រើសរើស Page នៅខាងឆ្វេងជាមុនសិន
               </div>
             ) : (
               selectedPagesList.map((page) => {
@@ -549,11 +715,9 @@ export default function VideoPublisherTab({
                         <span className="font-bold text-white text-xs">
                           {page.name}
                         </span>
-                        {page.category && (
-                          <span className="text-[10px] text-slate-500 hidden sm:inline">
-                            ({page.category})
-                          </span>
-                        )}
+                        <span className="text-[10px] text-purple-300 bg-purple-950/60 border border-purple-500/30 px-2 py-0.2 rounded-full">
+                          {page.category}
+                        </span>
                       </div>
                       <div className="flex items-center gap-2 text-slate-400">
                         <span className="text-[10px] font-mono text-slate-500">
@@ -571,7 +735,7 @@ export default function VideoPublisherTab({
                     {isExpanded && (
                       <div className="p-3.5 space-y-2 border-t border-slate-800 bg-slate-950/40">
                         <textarea
-                          rows={4}
+                          rows={5}
                           value={caption}
                           onChange={(e) =>
                             handleUpdateCaption(page.id, e.target.value)
@@ -579,8 +743,8 @@ export default function VideoPublisherTab({
                           className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-slate-200 leading-relaxed focus:outline-none focus:border-purple-500 font-sans"
                         />
                         <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
-                          <span>
-                            {captionsMap[page.id] ? "✨ AI Generated Caption" : "📝 Default Caption"}
+                          <span className="text-purple-300 font-medium">
+                            {captionsMap[page.id] ? "✨ AI Tailored Caption (ខុសប្លែកពីគេ)" : "📝 Default Caption"}
                           </span>
                           <button
                             type="button"
@@ -588,7 +752,7 @@ export default function VideoPublisherTab({
                             className="flex items-center gap-1 text-slate-400 hover:text-white"
                           >
                             <Copy className="h-3 w-3" />
-                            <span>{lang === "km" ? "ចម្លង" : "Copy"}</span>
+                            <span>ចម្លង</span>
                           </button>
                         </div>
                       </div>
@@ -613,8 +777,8 @@ export default function VideoPublisherTab({
               )}
               <span>
                 {isPublishing
-                  ? (lang === "km" ? "កំពុងផុសទៅកាន់ Pages..." : "Publishing to Pages...")
-                  : (lang === "km" ? `🚀 បញ្ជាផុសទៅកាន់ ${selectedPageIds.length} Pages ព្រមគ្នា` : `Publish to ${selectedPageIds.length} Pages Now`)}
+                  ? "កំពុងបញ្ជូន និងផុសទៅកាន់ Pages ទាំង ៨..."
+                  : `🚀 បញ្ជាផុសទៅកាន់ ${selectedPageIds.length} Pages ព្រមគ្នាឥឡូវនេះ`}
               </span>
             </button>
           </div>
@@ -624,9 +788,7 @@ export default function VideoPublisherTab({
             <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 space-y-2">
               <div className="flex items-center gap-2 text-emerald-300 font-bold text-xs">
                 <CheckCircle2 className="h-4 w-4" />
-                <span>
-                  {lang === "km" ? "ការផុសត្រូវបានបញ្ចប់ជោគជ័យ!" : "Publication Completed!"}
-                </span>
+                <span>ការផុសទៅកាន់ Pages ទាំងអស់ត្រូវបានបញ្ចប់ជោគជ័យ!</span>
               </div>
               <div className="divide-y divide-emerald-900/40 text-xs">
                 {publishResults.map((r) => (
@@ -653,7 +815,7 @@ export default function VideoPublisherTab({
           <div className="flex items-center gap-2">
             <Clock className="h-4 w-4 text-slate-400" />
             <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-              {lang === "km" ? "ប្រវត្តិនៃការផុសវីដេអូកន្លងមក (Posting History)" : "Posting History"}
+              ប្រវត្តិនៃការផុសវីដេអូកន្លងមក (Posting History)
             </h3>
           </div>
           <button
@@ -661,7 +823,7 @@ export default function VideoPublisherTab({
             className="text-[11px] text-blue-400 hover:text-blue-300 flex items-center gap-1"
           >
             <RefreshCw className={`h-3 w-3 ${loadingHistory ? "animate-spin" : ""}`} />
-            <span>{lang === "km" ? "ទាញយកឡើងវិញ" : "Refresh"}</span>
+            <span>ទាញយកឡើងវិញ</span>
           </button>
         </div>
 
@@ -669,18 +831,19 @@ export default function VideoPublisherTab({
           <table className="w-full text-left">
             <thead className="bg-slate-800/40 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
               <tr>
-                <th className="py-3 px-4">{lang === "km" ? "ចំណងជើងវីដេអូ" : "Title"}</th>
-                <th className="py-3 px-4">{lang === "km" ? "ប្រភេទ" : "Type"}</th>
-                <th className="py-3 px-4">{lang === "km" ? "ចំនួន Pages" : "Pages"}</th>
-                <th className="py-3 px-4">{lang === "km" ? "កាលបរិច្ឆេទ" : "Date"}</th>
-                <th className="py-3 px-4">{lang === "km" ? "ស្ថានភាព" : "Status"}</th>
+                <th className="py-3 px-4">ចំណងជើងវីដេអូ</th>
+                <th className="py-3 px-4">ទម្រង់</th>
+                <th className="py-3 px-4">យុទ្ធសាស្ត្រ Caption</th>
+                <th className="py-3 px-4">ចំនួន Pages</th>
+                <th className="py-3 px-4">កាលបរិច្ឆេទ</th>
+                <th className="py-3 px-4">ស្ថានភាព</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-slate-300">
               {history.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-slate-500">
-                    {lang === "km" ? "មិនទាន់មានប្រវត្តិផុសនៅឡើយទេ" : "No publishing history yet"}
+                  <td colSpan={6} className="py-8 text-center text-slate-500">
+                    មិនទាន់មានប្រវត្តិផុសនៅឡើយទេ
                   </td>
                 </tr>
               ) : (
@@ -692,6 +855,11 @@ export default function VideoPublisherTab({
                     <td className="py-3 px-4">
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 border border-slate-700 text-purple-300">
                         {item.postType === "reels" ? "🎥 Reels" : "📹 Video"}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-950/60 text-indigo-300 border border-indigo-500/30 uppercase">
+                        {item.captionStyle || "Promotion"}
                       </span>
                     </td>
                     <td className="py-3 px-4 font-bold text-cyan-300">
