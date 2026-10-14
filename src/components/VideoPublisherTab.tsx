@@ -381,15 +381,10 @@ export default function VideoPublisherTab({
     setPublishProgress({
       total: selectedPageIds.length,
       completed: 0,
-      status: "កំពុងទាញយក Page Access Token ពីប្រព័ន្ធ...",
+      status: "កំពុងរៀបចំទិន្នន័យសម្រាប់ផុស...",
     });
 
     try {
-      // 1. Fetch live Page Access Tokens stored in Supabase
-      const tokenRes = await fetch("/api/video-publisher?action=tokens");
-      const tokenJson = tokenRes.ok ? await tokenRes.json() : {};
-      const tokenMap: Record<string, string> = tokenJson.tokens || {};
-
       const targetPages = allTargetPages.filter((p) =>
         selectedPageIds.includes(p.id)
       );
@@ -402,184 +397,80 @@ export default function VideoPublisherTab({
           `${videoTitle || "ការផ្សព្វផ្សាយពិសេស"}\n\n${mediaStory || baseTopic}\n\n#${p.name.replace(/\s+/g, "")}`,
       }));
 
-      const results: {
-        pageId: string;
-        pageName: string;
-        status: "success" | "error";
-        postId?: string;
-        captionPreview: string;
-        message?: string;
-        needsReauth?: boolean;
-      }[] = [];
+      let finalMediaUrl = videoDirectUrl || "";
 
-      let completedCount = 0;
+      // 1. If user selected a local file (video or photo), upload directly to Cloud Storage via signed URL
+      // This completely bypasses Vercel's 4.5MB payload limit and avoids browser CORS blocks
+      const activeFile = mediaType === "video" ? videoFile : mediaType === "photo" ? photoFile : null;
 
-      for (const item of pageCaptions) {
-        const pageToken = tokenMap[item.pageId];
+      if (activeFile) {
         setPublishProgress({
-          total: pageCaptions.length,
-          completed: completedCount,
-          status: `កំពុងផុសទៅកាន់ "${item.pageName}" (${completedCount + 1}/${pageCaptions.length})...`,
+          total: selectedPageIds.length,
+          completed: 0,
+          status: `កំពុង Upload ${mediaType === "video" ? "វីដេអូ" : "រូបភាព"} (${(activeFile.size / (1024 * 1024)).toFixed(1)} MB) ទៅកាន់ Cloud Storage...`,
         });
 
-        if (!pageToken) {
-          results.push({
-            pageId: item.pageId,
-            pageName: item.pageName,
-            status: "error",
-            captionPreview: item.caption.slice(0, 70) + "...",
-            message: "ពុំមាន Access Token សម្រាប់ Page នេះទេ (សូម Re-authorize ឡើងវិញ)",
-            needsReauth: true,
-          });
-          completedCount++;
-          continue;
+        const uploadUrlRes = await fetch(
+          `/api/video-publisher?action=get_upload_url&fileName=${encodeURIComponent(activeFile.name)}`
+        );
+        const uploadUrlData = await uploadUrlRes.json();
+
+        if (!uploadUrlRes.ok || !uploadUrlData?.signedUrl) {
+          throw new Error(uploadUrlData?.error || "មិនអាចបង្កើតតំណភ្ជាប់ Upload បានទេ");
         }
 
-        try {
-          let fbRes: Response;
-          let fbData: any;
+        const putRes = await fetch(uploadUrlData.signedUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type": activeFile.type || (mediaType === "video" ? "video/mp4" : "image/jpeg"),
+          },
+          body: activeFile,
+        });
 
-          if (mediaType === "video" && videoFile) {
-            // Direct browser upload to Facebook Graph-Video API (Bypasses Vercel 4.5MB limit)
-            const formData = new FormData();
-            formData.append("source", videoFile);
-            formData.append("description", item.caption);
-            formData.append("title", videoTitle || "Video Post");
-            formData.append("access_token", pageToken);
-            formData.append("published", "true");
-
-            fbRes = await fetch(`https://graph-video.facebook.com/v19.0/${item.pageId}/videos`, {
-              method: "POST",
-              body: formData,
-            });
-            fbData = await fbRes.json();
-          } else if (mediaType === "photo" && photoFile) {
-            // Direct browser upload photo to Facebook Graph API
-            const formData = new FormData();
-            formData.append("source", photoFile);
-            formData.append("caption", item.caption);
-            formData.append("access_token", pageToken);
-            formData.append("published", "true");
-
-            fbRes = await fetch(`https://graph.facebook.com/v19.0/${item.pageId}/photos`, {
-              method: "POST",
-              body: formData,
-            });
-            fbData = await fbRes.json();
-          } else if (mediaType === "photo" && videoDirectUrl) {
-            // Photo via remote URL
-            fbRes = await fetch(`https://graph.facebook.com/v19.0/${item.pageId}/photos`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                url: videoDirectUrl,
-                caption: item.caption,
-                access_token: pageToken,
-                published: true,
-              }),
-            });
-            fbData = await fbRes.json();
-          } else if (mediaType === "video" && videoDirectUrl) {
-            // Video via remote URL (Must use graph-video.facebook.com)
-            fbRes = await fetch(`https://graph-video.facebook.com/v19.0/${item.pageId}/videos`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                file_url: videoDirectUrl,
-                description: item.caption,
-                title: videoTitle || "Video Post",
-                access_token: pageToken,
-                published: true,
-              }),
-            });
-            fbData = await fbRes.json();
-          } else {
-            // Pure text post via /feed
-            fbRes = await fetch(`https://graph.facebook.com/v19.0/${item.pageId}/feed`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                message: item.caption,
-                access_token: pageToken,
-              }),
-            });
-            fbData = await fbRes.json();
-          }
-
-          if (fbRes.ok && (fbData?.id || fbData?.post_id)) {
-            const realPostId = fbData.id || fbData.post_id;
-            results.push({
-              pageId: item.pageId,
-              pageName: item.pageName,
-              status: "success",
-              postId: realPostId,
-              captionPreview: item.caption.slice(0, 70) + "...",
-              message: "បានផុសទៅកាន់ Facebook Page ផ្ទាល់ជោគជ័យ!",
-            });
-          } else {
-            const errObj = fbData?.error;
-            const errCode = errObj?.code;
-            const errMsg = errObj?.message || "Facebook Graph API returned an error";
-            const isPermError =
-              errCode === 200 ||
-              errCode === 190 ||
-              errMsg.includes("pages_manage_posts") ||
-              errMsg.includes("requires both pages_read_engagement");
-
-            results.push({
-              pageId: item.pageId,
-              pageName: item.pageName,
-              status: "error",
-              captionPreview: item.caption.slice(0, 70) + "...",
-              message: isPermError
-                ? "Facebook ទាមទារសិទ្ធិ 'pages_manage_posts' (សូមចុចប៊ូតុង 'ភ្ជាប់សិទ្ធិឡើងវិញ')"
-                : `Facebook Error: ${errMsg}`,
-              needsReauth: isPermError,
-            });
-          }
-        } catch (postErr: any) {
-          results.push({
-            pageId: item.pageId,
-            pageName: item.pageName,
-            status: "error",
-            captionPreview: item.caption.slice(0, 70) + "...",
-            message: postErr.message || "Failed to communicate with Facebook",
-          });
+        if (!putRes.ok) {
+          throw new Error("ការ Upload មេឌៀទៅកាន់ Cloud បរាជ័យ សូមព្យាយាមម្តងទៀត");
         }
 
-        completedCount++;
+        finalMediaUrl = uploadUrlData.publicUrl;
       }
 
-      setPublishResults(results);
+      // 2. Dispatch to Facebook via Server API (Node.js bypasses all browser CORS & AdBlockers)
+      setPublishProgress({
+        total: selectedPageIds.length,
+        completed: 0,
+        status: `កំពុងផុសទៅកាន់ ${pageCaptions.length} Pages តាមរយៈ Server (គ្មានបញ្ហា CORS / Block)...`,
+      });
 
-      // 2. Persist this publish record to Supabase History
-      const record: VideoPostRecord = {
-        id: `vpost_${Date.now()}`,
-        title: videoTitle || (mediaType === "video" ? "វីដេអូផ្សព្វផ្សាយ" : mediaType === "photo" ? "រូបភាពផ្សព្វផ្សាយ" : "អត្ថបទផ្សព្វផ្សាយ"),
-        videoUrl: videoDirectUrl || (mediaType === "video" ? "[Uploaded Video File]" : mediaType === "photo" ? "[Uploaded Photo File]" : "[Text Post]"),
-        mediaType,
-        postType,
-        captionStyle,
-        targetPagesCount: pageCaptions.length,
-        publishedAt: new Date().toISOString(),
-        status: results.every((r) => r.status === "success")
-          ? "completed"
-          : "partial",
-        results,
-      };
-
-      await fetch("/api/video-publisher", {
+      const pubRes = await fetch("/api/video-publisher", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "save_history",
-          record,
+          action: "publish_video",
+          title: videoTitle || (mediaType === "video" ? "វីដេអូផ្សព្វផ្សាយ" : mediaType === "photo" ? "រូបភាពផ្សព្វផ្សាយ" : "អត្ថបទផ្សព្វផ្សាយ"),
+          videoUrl: finalMediaUrl,
+          mediaType,
+          postType,
+          captionStyle,
+          pageCaptions,
         }),
       });
 
+      const pubData = await pubRes.json();
+      if (!pubRes.ok) {
+        throw new Error(pubData.error || "ការផុសបរាជ័យ");
+      }
+
+      setPublishResults(pubData.results || []);
+      if (pubData.record) {
+        setHistory((prev: VideoPostRecord[]) => [
+          pubData.record,
+          ...prev.filter((r: VideoPostRecord) => r.id !== pubData.record.id),
+        ]);
+      }
       fetchHistory();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to publish media:", err);
+      alert("មានបញ្ហាក្នុងការផុស៖ " + (err.message || "Failed to publish"));
     } finally {
       setIsPublishing(false);
       setPublishProgress(null);

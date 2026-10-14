@@ -302,6 +302,35 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, tokens: tokenMap });
     }
 
+    if (searchParams.get("action") === "get_upload_url") {
+      const fileName = searchParams.get("fileName") || `upload_${Date.now()}`;
+      const ext = fileName.split(".").pop() || "bin";
+      const cleanFileName = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
+      const filePath = `uploads/${cleanFileName}`;
+
+      const { data, error } = await supabase.storage
+        .from("vst-media")
+        .createSignedUploadUrl(filePath);
+
+      if (error || !data) {
+        return NextResponse.json(
+          { error: error?.message || "Failed to create upload URL" },
+          { status: 500 }
+        );
+      }
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("vst-media").getPublicUrl(filePath);
+
+      return NextResponse.json({
+        success: true,
+        signedUrl: data.signedUrl,
+        path: filePath,
+        publicUrl,
+      });
+    }
+
     const { data } = await supabase
       .from("bot_settings")
       .select("dm_template")
@@ -326,6 +355,179 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const contentType = req.headers.get("content-type") || "";
+
+    // 1. MULTIPART FORM-DATA: Server-side direct media publishing (Bypasses all Browser AdBlockers & CORS)
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await req.formData();
+      const mediaType = (formData.get("mediaType") as "video" | "photo" | "text") || "video";
+      const file = formData.get("file") as File | null;
+      const title = (formData.get("title") as string) || "";
+      const postType = (formData.get("postType") as "reels" | "video") || "reels";
+      const captionStyle = (formData.get("captionStyle") as string) || "promotion";
+      const rawPageCaptions = formData.get("pageCaptions") as string;
+
+      let pageCaptions: PageCaptionItem[] = [];
+      try {
+        pageCaptions = JSON.parse(rawPageCaptions || "[]");
+      } catch (err) {
+        return NextResponse.json({ error: "Invalid pageCaptions format" }, { status: 400 });
+      }
+
+      if (pageCaptions.length === 0) {
+        return NextResponse.json({ error: "No target pages provided" }, { status: 400 });
+      }
+
+      const tokenMap = await getPageTokensMap();
+      const defaultToken = process.env.FB_PAGE_ACCESS_TOKEN;
+      const results: {
+        pageId: string;
+        pageName: string;
+        status: "success" | "error";
+        postId?: string;
+        captionPreview: string;
+        message?: string;
+      }[] = [];
+
+      for (const item of pageCaptions) {
+        const pageToken = tokenMap[item.pageId] || defaultToken;
+        if (!pageToken) {
+          results.push({
+            pageId: item.pageId,
+            pageName: item.pageName,
+            status: "error",
+            captionPreview: item.caption.slice(0, 70) + "...",
+            message: "ពុំមាន Access Token សម្រាប់ Page នេះទេ",
+          });
+          continue;
+        }
+
+        try {
+          let fbRes: Response;
+          let fbData: any;
+
+          if (mediaType === "video" && file) {
+            // Upload directly to graph-video.facebook.com from Node.js server
+            const fbFormData = new FormData();
+            fbFormData.append("source", file, file.name || "video.mp4");
+            fbFormData.append("description", item.caption);
+            fbFormData.append("title", title || "Video Post");
+            fbFormData.append("access_token", pageToken);
+            fbFormData.append("published", "true");
+
+            fbRes = await fetch(`https://graph-video.facebook.com/v19.0/${item.pageId}/videos`, {
+              method: "POST",
+              body: fbFormData,
+            });
+            fbData = await fbRes.json();
+          } else if (mediaType === "photo" && file) {
+            // Upload directly to graph.facebook.com/photos from Node.js server
+            const fbFormData = new FormData();
+            fbFormData.append("source", file, file.name || "photo.jpg");
+            fbFormData.append("caption", item.caption);
+            fbFormData.append("access_token", pageToken);
+            fbFormData.append("published", "true");
+
+            fbRes = await fetch(`https://graph.facebook.com/v19.0/${item.pageId}/photos`, {
+              method: "POST",
+              body: fbFormData,
+            });
+            fbData = await fbRes.json();
+          } else {
+            // Pure text post to feed
+            fbRes = await fetch(`https://graph.facebook.com/v19.0/${item.pageId}/feed`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                message: item.caption,
+                access_token: pageToken,
+              }),
+            });
+            fbData = await fbRes.json();
+          }
+
+          if (fbRes.ok && (fbData?.id || fbData?.post_id)) {
+            const realPostId = fbData.id || fbData.post_id;
+            results.push({
+              pageId: item.pageId,
+              pageName: item.pageName,
+              status: "success",
+              postId: realPostId,
+              captionPreview: item.caption.slice(0, 70) + "...",
+              message: "បានផុសទៅកាន់ Facebook Page ផ្ទាល់ជោគជ័យ!",
+            });
+          } else {
+            const errMsg = fbData?.error?.message || "Facebook Graph API returned an error";
+            results.push({
+              pageId: item.pageId,
+              pageName: item.pageName,
+              status: "error",
+              captionPreview: item.caption.slice(0, 70) + "...",
+              message: `Facebook Error: ${errMsg}`,
+            });
+          }
+        } catch (postErr: any) {
+          results.push({
+            pageId: item.pageId,
+            pageName: item.pageName,
+            status: "error",
+            captionPreview: item.caption.slice(0, 70) + "...",
+            message: postErr.message || "Failed to communicate with Facebook",
+          });
+        }
+      }
+
+      // Save to Supabase History
+      const newRecord: VideoPostRecord = {
+        id: `vpost_${Date.now()}`,
+        title: title || (mediaType === "video" ? "វីដេអូផ្សព្វផ្សាយ" : mediaType === "photo" ? "រូបភាពផ្សព្វផ្សាយ" : "អត្ថបទផ្សព្វផ្សាយ"),
+        videoUrl: file ? `[Uploaded ${mediaType === "video" ? "Video" : "Photo"} File]` : "[Text Post]",
+        mediaType,
+        postType,
+        captionStyle,
+        targetPagesCount: pageCaptions.length,
+        publishedAt: new Date().toISOString(),
+        status: results.every((r) => r.status === "success") ? "completed" : "partial",
+        results,
+      };
+
+      try {
+        const { data: existingData } = await supabase
+          .from("bot_settings")
+          .select("dm_template")
+          .eq("id", "vst_video_posts")
+          .maybeSingle();
+
+        let historyList: VideoPostRecord[] = [];
+        if (existingData?.dm_template) {
+          try {
+            historyList = JSON.parse(existingData.dm_template);
+          } catch {}
+        }
+
+        historyList.unshift(newRecord);
+        if (historyList.length > 30) historyList = historyList.slice(0, 30);
+
+        await supabase.from("bot_settings").upsert(
+          {
+            id: "vst_video_posts",
+            dm_template: JSON.stringify(historyList),
+            is_active: true,
+          },
+          { onConflict: "id" }
+        );
+      } catch (histErr) {
+        console.warn("Failed to persist history to Supabase:", histErr);
+      }
+
+      return NextResponse.json({
+        success: true,
+        record: newRecord,
+        results,
+      });
+    }
+
+    // 2. JSON REQUESTS
     const body = await req.json();
     const { action } = body;
 
@@ -653,12 +855,13 @@ Example format:
             fbData = await fbRes.json();
           }
 
-          if (fbRes.ok && fbData?.id) {
+          if (fbRes.ok && (fbData?.id || fbData?.post_id)) {
+            const realPostId = fbData.id || fbData.post_id;
             results.push({
               pageId: item.pageId,
               pageName: item.pageName,
               status: "success",
-              postId: fbData.id,
+              postId: realPostId,
               captionPreview: item.caption.slice(0, 70) + "...",
               message: "បានផុសទៅកាន់ Facebook Page ផ្ទាល់ជោគជ័យ!",
             });
