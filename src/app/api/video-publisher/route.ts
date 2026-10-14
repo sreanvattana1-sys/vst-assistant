@@ -238,6 +238,22 @@ Emmi ជំនួយការពិសេសសម្រាប់សុខភា
 #Emmi #${pageName.replace(/\s+/g, "")} #ស្តង់ដារកូរ៉េ`;
 }
 
+// Helper to convert Google Drive / Dropbox sharing links into direct stream URLs for Facebook (Supports 5GB+)
+function convertToDirectMediaUrl(url: string): string {
+  if (!url) return url;
+  const trimmed = url.trim();
+  // Google Drive
+  const gdriveMatch = trimmed.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (gdriveMatch && gdriveMatch[1]) {
+    return `https://drive.usercontent.google.com/download?id=${gdriveMatch[1]}&export=download&authuser=0`;
+  }
+  // Dropbox
+  if (trimmed.includes("dropbox.com") && trimmed.includes("dl=0")) {
+    return trimmed.replace("dl=0", "dl=1");
+  }
+  return trimmed;
+}
+
 // Helper to fetch individual Page Access Tokens from Supabase vst_members & env
 async function getPageTokensMap(): Promise<Record<string, string>> {
   const tokenMap: Record<string, string> = {};
@@ -798,11 +814,12 @@ Example format:
         }
 
         try {
+          const directMediaUrl = convertToDirectMediaUrl(videoUrl || "");
           const isRemoteVideoUrl =
-            videoUrl &&
-            (videoUrl.startsWith("http://") || videoUrl.startsWith("https://")) &&
-            !videoUrl.includes("localhost") &&
-            !videoUrl.startsWith("blob:");
+            directMediaUrl &&
+            (directMediaUrl.startsWith("http://") || directMediaUrl.startsWith("https://")) &&
+            !directMediaUrl.includes("localhost") &&
+            !directMediaUrl.startsWith("blob:");
 
           let fbRes: Response;
           let fbData: any;
@@ -815,7 +832,7 @@ Example format:
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  url: videoUrl,
+                  url: directMediaUrl,
                   caption: item.caption,
                   access_token: pageToken,
                 }),
@@ -830,7 +847,7 @@ Example format:
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  file_url: videoUrl,
+                  file_url: directMediaUrl,
                   description: item.caption,
                   title: title || "Video Post",
                   access_token: pageToken,

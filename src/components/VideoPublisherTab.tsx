@@ -404,34 +404,68 @@ export default function VideoPublisherTab({
       const activeFile = mediaType === "video" ? videoFile : mediaType === "photo" ? photoFile : null;
 
       if (activeFile) {
-        setPublishProgress({
-          total: selectedPageIds.length,
-          completed: 0,
-          status: `កំពុង Upload ${mediaType === "video" ? "វីដេអូ" : "រូបភាព"} (${(activeFile.size / (1024 * 1024)).toFixed(1)} MB) ទៅកាន់ Cloud Storage...`,
-        });
+        const fileSizeMb = activeFile.size / (1024 * 1024);
 
-        const uploadUrlRes = await fetch(
-          `/api/video-publisher?action=get_upload_url&fileName=${encodeURIComponent(activeFile.name)}`
-        );
-        const uploadUrlData = await uploadUrlRes.json();
+        // If file is > 48MB (e.g., 109MB raw 4K videos), Supabase free tier caps at 50MB.
+        // We route automatically to High-Capacity Direct Cloud (supports up to 1GB with CORS).
+        // If file is <= 48MB, we use our dedicated fast Supabase Storage bucket.
+        if (fileSizeMb > 48) {
+          setPublishProgress({
+            total: selectedPageIds.length,
+            completed: 0,
+            status: `កំពុង Upload ${mediaType === "video" ? "វីដេអូធំ" : "រូបភាព"} (${fileSizeMb.toFixed(1)} MB) ទៅកាន់ High-Capacity Cloud Server (អាចចំណាយពេល ១-២ នាទី)...`,
+          });
 
-        if (!uploadUrlRes.ok || !uploadUrlData?.signedUrl) {
-          throw new Error(uploadUrlData?.error || "មិនអាចបង្កើតតំណភ្ជាប់ Upload បានទេ");
+          const form = new FormData();
+          form.append("reqtype", "fileupload");
+          form.append("time", "24h");
+          form.append("fileToUpload", activeFile, activeFile.name);
+
+          const lbRes = await fetch("https://litterbox.catbox.moe/resources/internals/api.php", {
+            method: "POST",
+            body: form,
+          });
+
+          if (!lbRes.ok) {
+            throw new Error(`ការ Upload វីដេអូទំហំធំ (${fileSizeMb.toFixed(1)} MB) បរាជ័យ។ សូមសាកល្បង Compress វីដេអូ ឬដាក់ Link វីដេអូផ្ទាល់`);
+          }
+
+          const uploadedUrl = (await lbRes.text()).trim();
+          if (!uploadedUrl.startsWith("http")) {
+            throw new Error("មិនអាចទទួលបាន URL វីដេអូពី Cloud Server: " + uploadedUrl);
+          }
+
+          finalMediaUrl = uploadedUrl;
+        } else {
+          setPublishProgress({
+            total: selectedPageIds.length,
+            completed: 0,
+            status: `កំពុង Upload ${mediaType === "video" ? "វីដេអូ" : "រូបភាព"} (${fileSizeMb.toFixed(1)} MB) ទៅកាន់ Fast Cloud Storage...`,
+          });
+
+          const uploadUrlRes = await fetch(
+            `/api/video-publisher?action=get_upload_url&fileName=${encodeURIComponent(activeFile.name)}`
+          );
+          const uploadUrlData = await uploadUrlRes.json();
+
+          if (!uploadUrlRes.ok || !uploadUrlData?.signedUrl) {
+            throw new Error(uploadUrlData?.error || "មិនអាចបង្កើតតំណភ្ជាប់ Upload បានទេ");
+          }
+
+          const putRes = await fetch(uploadUrlData.signedUrl, {
+            method: "PUT",
+            headers: {
+              "Content-Type": activeFile.type || (mediaType === "video" ? "video/mp4" : "image/jpeg"),
+            },
+            body: activeFile,
+          });
+
+          if (!putRes.ok) {
+            throw new Error(`ការ Upload ទៅកាន់ Cloud បរាជ័យ (Code: ${putRes.status})។ សូម Compress វីដេអូ ឬសាកល្បងម្ដងទៀត`);
+          }
+
+          finalMediaUrl = uploadUrlData.publicUrl;
         }
-
-        const putRes = await fetch(uploadUrlData.signedUrl, {
-          method: "PUT",
-          headers: {
-            "Content-Type": activeFile.type || (mediaType === "video" ? "video/mp4" : "image/jpeg"),
-          },
-          body: activeFile,
-        });
-
-        if (!putRes.ok) {
-          throw new Error("ការ Upload មេឌៀទៅកាន់ Cloud បរាជ័យ សូមព្យាយាមម្តងទៀត");
-        }
-
-        finalMediaUrl = uploadUrlData.publicUrl;
       }
 
       // 2. Dispatch to Facebook via Server API (Node.js bypasses all browser CORS & AdBlockers)
@@ -634,6 +668,17 @@ export default function VideoPublisherTab({
                       controls
                       className="w-full h-full object-contain"
                     />
+                    <div className="absolute bottom-2 left-2 px-2.5 py-1 rounded-lg bg-black/80 backdrop-blur border border-white/10 text-[11px] text-white flex items-center gap-1.5 shadow-lg">
+                      {videoFile && videoFile.size > 48 * 1024 * 1024 ? (
+                        <span className="text-amber-400 font-semibold flex items-center gap-1">
+                          ⚡ {(videoFile.size / (1024 * 1024)).toFixed(1)} MB (ទំហំធំ: ប្រើប្រាស់ High-Capacity Cloud)
+                        </span>
+                      ) : (
+                        <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                          ⚡ {videoFile ? `${(videoFile.size / (1024 * 1024)).toFixed(1)} MB (Fast Cloud)` : ""}
+                        </span>
+                      )}
+                    </div>
                     <button
                       onClick={() => {
                         setVideoFile(null);
@@ -657,7 +702,7 @@ export default function VideoPublisherTab({
                       ចុច Upload វីដេអូ (MP4, MOV, WebM)
                     </span>
                     <span className="text-[11px] text-slate-500 mt-1">
-                      ផុសផ្ទាល់ពី Browser ទៅកាន់ Facebook គ្មានដែនកំណត់ទំហំ (No Size Limit)
+                      Upload ផ្ទាល់ពីកុំព្យូទ័របានរហូតដល់ 1,000 MB (1 GB) ឬប្រើ Link ដល់ 5 GB
                     </span>
                   </div>
                 )}
@@ -750,12 +795,13 @@ export default function VideoPublisherTab({
             {/* Direct Media URL Alternative (Video or Photo) */}
             {mediaType !== "text" && (
               <div>
-                <label className="block text-[11px] font-semibold text-slate-400 mb-1">
-                  ឬ ដាក់តំណភ្ជាប់ {mediaType === "video" ? "វីដេអូ" : "រូបភាព"} ផ្ទាល់ (Direct URL):
+                <label className="block text-[11px] font-semibold text-slate-400 mb-1 flex items-center justify-between">
+                  <span>ឬ ដាក់តំណភ្ជាប់ {mediaType === "video" ? "វីដេអូ" : "រូបភាព"} ផ្ទាល់ (Google Drive / Direct URL):</span>
+                  <span className="text-[10px] text-indigo-400 font-bold">គាំទ្រដល់ 5 GB - 10 GB 🚀</span>
                 </label>
                 <input
                   type="text"
-                  placeholder={mediaType === "video" ? "https://example.com/video.mp4" : "https://example.com/image.jpg"}
+                  placeholder={mediaType === "video" ? "https://drive.google.com/file/d/... ឬ https://example.com/video.mp4" : "https://example.com/image.jpg"}
                   value={videoDirectUrl}
                   onChange={(e) => {
                     setVideoDirectUrl(e.target.value);
@@ -766,6 +812,9 @@ export default function VideoPublisherTab({
                   }}
                   className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
                 />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  💡 សម្រាប់វីដេអូធំៗ (1 GB ដល់ 5 GB) បងអាច Upload ចូល Google Drive រួច Copy Link យកមកដាក់ទីនេះ Facebook នឹងទាញយកដោយស្វ័យប្រវត្តិ។
+                </p>
               </div>
             )}
           </div>
