@@ -213,7 +213,7 @@ export default function VideoPublisherTab({
         ? window.location.origin
         : "https://vst-assistant.vercel.app";
     const scopes =
-      "public_profile,pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_engagement,pages_manage_metadata,pages_messaging,pages_manage_posts,publish_video,ads_read,ads_management";
+      "public_profile,pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_engagement,pages_manage_metadata,pages_messaging,pages_manage_posts";
     const fbOAuthUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=1424105379104638&redirect_uri=${encodeURIComponent(
       redirectUri
     )}&response_type=token&auth_type=rerequest&scope=${scopes}`;
@@ -440,14 +440,15 @@ export default function VideoPublisherTab({
           let fbData: any;
 
           if (mediaType === "video" && videoFile) {
-            // Direct browser upload to Facebook Graph API (Bypasses Vercel 4.5MB limit)
+            // Direct browser upload to Facebook Graph-Video API (Bypasses Vercel 4.5MB limit)
             const formData = new FormData();
             formData.append("source", videoFile);
             formData.append("description", item.caption);
             formData.append("title", videoTitle || "Video Post");
             formData.append("access_token", pageToken);
+            formData.append("published", "true");
 
-            fbRes = await fetch(`https://graph.facebook.com/v19.0/${item.pageId}/videos`, {
+            fbRes = await fetch(`https://graph-video.facebook.com/v19.0/${item.pageId}/videos`, {
               method: "POST",
               body: formData,
             });
@@ -458,6 +459,7 @@ export default function VideoPublisherTab({
             formData.append("source", photoFile);
             formData.append("caption", item.caption);
             formData.append("access_token", pageToken);
+            formData.append("published", "true");
 
             fbRes = await fetch(`https://graph.facebook.com/v19.0/${item.pageId}/photos`, {
               method: "POST",
@@ -473,12 +475,13 @@ export default function VideoPublisherTab({
                 url: videoDirectUrl,
                 caption: item.caption,
                 access_token: pageToken,
+                published: true,
               }),
             });
             fbData = await fbRes.json();
           } else if (mediaType === "video" && videoDirectUrl) {
-            // Video via remote URL
-            fbRes = await fetch(`https://graph.facebook.com/v19.0/${item.pageId}/videos`, {
+            // Video via remote URL (Must use graph-video.facebook.com)
+            fbRes = await fetch(`https://graph-video.facebook.com/v19.0/${item.pageId}/videos`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -486,6 +489,7 @@ export default function VideoPublisherTab({
                 description: item.caption,
                 title: videoTitle || "Video Post",
                 access_token: pageToken,
+                published: true,
               }),
             });
             fbData = await fbRes.json();

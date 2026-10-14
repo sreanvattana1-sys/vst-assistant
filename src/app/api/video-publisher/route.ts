@@ -623,7 +623,7 @@ Example format:
           } else if (isRemoteVideoUrl) {
             // 2. Post Video or Reel via /videos Graph API
             fbRes = await fetch(
-              `https://graph.facebook.com/v19.0/${item.pageId}/videos`,
+              `https://graph-video.facebook.com/v19.0/${item.pageId}/videos`,
               {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -632,6 +632,7 @@ Example format:
                   description: item.caption,
                   title: title || "Video Post",
                   access_token: pageToken,
+                  published: true,
                 }),
               }
             );
