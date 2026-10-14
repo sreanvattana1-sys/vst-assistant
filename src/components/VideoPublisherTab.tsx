@@ -81,6 +81,61 @@ const OFFICIAL_COMPANY_PAGES = [
   },
 ];
 
+const GOLDEN_PRESETS = [
+  {
+    id: "treatment",
+    label: "🌿 Emmi ព្យាបាលធ្លាក់ស/រដូវមិនទៀង (២០មុខ)",
+    text: `ធ្លាក់ស រដូវមកមិនទៀង មានក្លិនមិនល្អ... ឈប់បារម្ភទៀតទៅ! 
+Emmi ជំនួយការពិសេសសម្រាប់សុខភាពស្ត្រី។ ផលិតផលដែលរួមផ្សំឡើងពីគ្រឿងផ្សំធម្មជាតិជិត ២០មុខ ជួយដោះស្រាយបញ្ហា៖
+✅ រដូវមកមិនទៀង និងឈឺចាប់ខ្លាំង
+✅ ធ្លាក់/ស រមាស់ និងមានក្លិន
+✅ ផ្សិតក្នុងទ្វារ.មាស
+✅ សិរមាន់ HVP
+✅ ស្ងួតទ្វា.មាស់
+✅ បញ្ហាស្បូន...
+
+🛡️ ជួយឱ្យរដូវមកទៀងទាត់ ផ្តល់ទំនុកចិត្ត និងសុខភាពល្អពីខាងក្នុង! ឃើញប្រសិទ្ធភាពលឿន... 
+👉 ឆាតមកយើងឥឡូវនេះដើម្បីទទួលបានការប្រឹក្សាយោបល់ឥតគិតថ្លៃ!`,
+  },
+  {
+    id: "daily_care",
+    label: "🌸 Emmi ថែរក្សាប្រចាំថ្ងៃ (ស្តង់ដារកូរ៉េ)",
+    text: `ស្ត្រីជាច្រើនអាចជួបប្រទះបញ្ហាដូចជា៖
+💗 អារម្មណ៍មិនស្រួលនៅតំបន់សម្ងាត់
+💗 ក្លិនមិនស្រស់ស្រាយ
+💗 សំណើម ឬទឹករំអិលប្រែប្រួល
+💗 អារម្មណ៍រមាស់ ឬរំខាន
+💗 ភាពស្ងួត និងមិនស្រួលខ្លួន
+💗 ការប្រែប្រួលដែលកើតឡើងតាមវ័យ និងរបៀបរស់នៅ
+
+🇰🇷 Emmi (អេមមី) ជាផលិតផលថែរក្សាសុខភាពនារី ស្តង់ដារកូរ៉េសម្រាប់ថែរក្សាខ្លួនប្រចាំថ្ងៃ។
+✨ ងាយស្រួលប្រើ
+✨ សម្រាប់ការថែរក្សាប្រចាំថ្ងៃ
+✨ គុណភាពតាមស្តង់ដារកូរ៉េ
+✨ ជួយឲ្យការថែរក្សាខ្លួនកាន់តែងាយស្រួល
+
+📩 ចង់ដឹងព័ត៌មានលម្អិត របៀបប្រើ និងតម្លៃ សូមផ្ញើសារមក Page`,
+  },
+  {
+    id: "kidney",
+    label: "🛡️ Kidney Pro ជំនួយតម្រងនោម & នោមញឹក",
+    text: `បងប្អូនជាច្រើនអាចជួបប្រទះបញ្ហាដូចជា៖
+🌿 នោមញឹកពេលយប់លើសពី ២-៣ ដង
+🌿 នោមទាស់ នោមរអាក់រអួល ឬឈឺផ្សា
+🌿 ចុកចង្កេះ ចុករួយខ្នង ងើបមិនចង់រួច
+🌿 អស់កម្លាំងល្ហិតល្ហៃ គេងមិនលក់ស្រួល
+🌿 សញ្ញាជាតិពុលកើនឡើងក្នុងតម្រងនោម
+
+🛡️ Kidney Pro (ឃីដនី ប្រូ) ជំនួយតម្រងនោម និងបន្សុទ្ធជាតិពុល ផ្សំពីរុក្ខជាតិឱសថធម្មជាតិ៖
+✅ សម្រួលការបត់ជើងតូចឱ្យស្រួល គេងលក់ពេញមួយយប់
+✅ បំបាត់អាការៈចុកចង្កេះ និងអស់កម្លាំង
+✅ ជំនួយកោសិកាតម្រងនោមឱ្យរឹងមាំយូរអង្វែង
+✅ គុណភាពស្ដង់ដារ ទុកចិត្តបាន ១០០%
+
+📩 ឆាតមកកាន់យើងខ្ញុំឥឡូវនេះ ដើម្បីទទួលបានការប្រឹក្សាសុខភាពដោយឥតគិតថ្លៃ!`,
+  },
+];
+
 interface VideoPublisherTabProps {
   lang: "km" | "en";
   connectedPages: { id: string; name: string; category?: string }[];
@@ -110,6 +165,9 @@ export default function VideoPublisherTab({
   // Detailed Media Story/Content for Gemini 3.8 Deep Caption Generation
   const [mediaStory, setMediaStory] = useState<string>("");
 
+  // Master Caption Template (Golden copy state)
+  const [masterCaption, setMasterCaption] = useState<string>(GOLDEN_PRESETS[0].text);
+
   // Selected Pages State (default: ALL 8 PAGES PRE-SELECTED)
   const [selectedPageIds, setSelectedPageIds] = useState<string[]>(
     allTargetPages.map((p) => p.id)
@@ -121,9 +179,7 @@ export default function VideoPublisherTab({
   >("promotion");
 
   // Base Topic & Captions Map: pageId -> caption string
-  const [baseTopic, setBaseTopic] = useState(
-    "ប្រូម៉ូសិនពិសេសប្រចាំខែ ទិញ ២ ថែម ១ គុណភាពស្ដង់ដារខ្ពស់ ដឹកជញ្ជូនឥតគិតថ្លៃទូទាំង ២៥ ខេត្ត/ក្រុង"
-  );
+  const [baseTopic, setBaseTopic] = useState("");
   const [captionsMap, setCaptionsMap] = useState<Record<string, string>>({});
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
   const [expandedCaptionPageId, setExpandedCaptionPageId] = useState<string | null>(null);
@@ -252,7 +308,7 @@ export default function VideoPublisherTab({
         body: JSON.stringify({
           action: "generate_captions",
           videoTitle: videoTitle || (mediaType === "photo" ? "រូបភាពផ្សព្វផ្សាយ" : "វីដេអូផ្សព្វផ្សាយ"),
-          videoContent: mediaStory,
+          videoContent: mediaStory || masterCaption,
           baseTopic,
           captionStyle,
           pages: targetPages,
@@ -273,6 +329,26 @@ export default function VideoPublisherTab({
     } finally {
       setIsGeneratingAi(false);
     }
+  };
+
+  // Apply Master Caption directly to all selected pages (1-Click Instant Apply)
+  const applyMasterCaptionToAll = () => {
+    if (selectedPageIds.length === 0) {
+      alert("សូមជ្រើសរើស Page យ៉ាងហោចណាស់ ១ ជាមុនសិន!");
+      return;
+    }
+    const newMap: Record<string, string> = {};
+    allTargetPages
+      .filter((p) => selectedPageIds.includes(p.id))
+      .forEach((p) => {
+        if (p.name.includes("Kidney") || p.name.includes("តម្រងនោម")) {
+          newMap[p.id] = `${GOLDEN_PRESETS[2].text}\n\n#${p.name.replace(/\s+/g, "")}`;
+        } else {
+          newMap[p.id] = `${masterCaption}\n\n#${p.name.replace(/\s+/g, "")}`;
+        }
+      });
+    setCaptionsMap(newMap);
+    setExpandedCaptionPageId(selectedPageIds[0]);
   };
 
   // Update caption for a specific page
@@ -1004,13 +1080,67 @@ export default function VideoPublisherTab({
               </div>
             </div>
 
+            {/* MASTER CAPTION TEMPLATE & GOLDEN PRESETS */}
+            <div className="rounded-2xl border border-pink-500/40 bg-gradient-to-b from-pink-950/30 to-purple-950/20 p-4 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-lg bg-pink-500/20 text-pink-300">
+                    <FileText className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <h4 className="text-xs font-bold text-white">
+                      👑 គំរូ Caption ស្តង់ដារពេញចិត្ត (Master Caption Template)
+                    </h4>
+                    <p className="text-[10px] text-slate-400">
+                      ជ្រើសរើសគំរូស្ដង់ដារ ឬបិទភ្ជាប់ (Paste) Caption របស់បងនៅទីនេះ
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={applyMasterCaptionToAll}
+                  className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 transition shrink-0"
+                >
+                  <Check className="h-3.5 w-3.5 stroke-[3]" />
+                  <span>📋 ប្រើ Caption នេះគ្រប់ Page (Apply to All)</span>
+                </button>
+              </div>
+
+              {/* Clickable Golden Presets */}
+              <div className="flex flex-wrap gap-1.5">
+                {GOLDEN_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => setMasterCaption(preset.text)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition ${
+                      masterCaption === preset.text
+                        ? "bg-pink-600 border-pink-500 text-white shadow-sm"
+                        : "bg-slate-900/80 border-slate-700 text-slate-300 hover:text-white hover:border-slate-600"
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Master Caption Textarea */}
+              <textarea
+                rows={6}
+                value={masterCaption}
+                onChange={(e) => setMasterCaption(e.target.value)}
+                placeholder="បិទភ្ជាប់ (Paste) Caption គំរូដែលបងស្រឡាញ់ពេញចិត្តនៅទីនេះ..."
+                className="w-full bg-slate-900/90 border border-pink-500/40 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-pink-400 font-sans shadow-inner leading-relaxed"
+              />
+            </div>
+
             {/* Dedicated Media Story Content for Gemini 3.8 AI */}
             <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-3 space-y-1.5">
               <div className="flex items-center justify-between">
                 <label className="block text-[11px] font-bold text-amber-300 flex items-center gap-1.5">
                   <Sparkles className="h-3.5 w-3.5 text-amber-400" />
                   <span>
-                    ខ្លឹមសារជាក់ស្ដែងក្នុង{mediaType === "video" ? "វីដេអូ" : mediaType === "photo" ? "រូបភាព" : "ការផ្សព្វផ្សាយ"} (Media Story / Content)៖
+                    ខ្លឹមសារបន្ថែមក្នុង{mediaType === "video" ? "វីដេអូ" : mediaType === "photo" ? "រូបភាព" : "ការផ្សព្វផ្សាយ"} (Media Story & Promo Note)៖
                   </span>
                 </label>
                 <span className="text-[10px] text-amber-300 bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 rounded-full font-semibold">
@@ -1018,50 +1148,39 @@ export default function VideoPublisherTab({
                 </span>
               </div>
               <textarea
-                rows={3}
+                rows={2}
                 value={mediaStory}
                 onChange={(e) => setMediaStory(e.target.value)}
-                placeholder={
-                  mediaType === "video"
-                    ? "ឧ. វីដេអូនេះបង្ហាញពីការណែនាំពីអត្ថប្រយោជន៍ Kidney Pro ជួយបំបាត់នោមញឹកពេលយប់ និងចុកចង្កេះ, មានការបង្ហាញកំប៉ុងផលិតផល និងប្រូម៉ូសិនទិញ ២ ថែម ១..."
-                    : mediaType === "photo"
-                    ? "ឧ. រូបភាពបង្ហាញពីប្រអប់ Emmi សុខភាពស្រ្តី ជួយបំបាត់ធ្លាក់ស រដូវមិនទៀង និងមានបញ្ចុះតម្លៃពិសេស ៥០% ថ្ងៃនេះ..."
-                    : "ឧ. ខ្លឹមសារនៃការផ្សព្វផ្សាយអំពីផលិតផល និងទំនុកចិត្ត..."
-                }
+                placeholder="ឧ. វីដេអូនេះបង្ហាញពីការណែនាំពីអត្ថប្រយោជន៍ Emmi ជួយបំបាត់ធ្លាក់ស និងរដូវមិនទៀង, មានប្រូម៉ូសិនទិញ ២ ថែម ១..."
                 className="w-full bg-slate-900 border border-amber-500/40 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 font-sans shadow-inner"
               />
-              <p className="text-[10px] text-amber-200/70">
-                * បញ្ចូលព័ត៌មានលម្អិតពីអ្វីដែលកើតឡើងក្នុង{mediaType === "video" ? "វីដេអូ" : "រូបភាព"} ដើម្បីឱ្យ Gemini AI សរសេរ Caption ស៊ីគ្នានឹងសាច់រឿងពិតប្រាកដ ១០០% មិនខុសទៀតឡើយ។
-              </p>
             </div>
 
-            {/* Base Topic Textarea */}
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-300 mb-1.5">
-                គំនិតបន្ថែម / Promotion ឬ Call-to-Action (Extra Topic & Offer):
-              </label>
-              <textarea
-                rows={2}
-                value={baseTopic}
-                onChange={(e) => setBaseTopic(e.target.value)}
-                placeholder="ឧ. ប្រូម៉ូសិនពិសេសប្រចាំខែ ទិញ ២ ថែម ១ គុណភាពស្ដង់ដារខ្ពស់ ដឹកជញ្ជូនឥតគិតថ្លៃទូទាំង ២៥ ខេត្ត/ក្រុង"
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 font-sans"
-              />
-            </div>
+            {/* Action Buttons: 1-Click Apply OR AI Generate */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={applyMasterCaptionToAll}
+                className="py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition"
+              >
+                <Check className="h-4 w-4 stroke-[3]" />
+                <span>📋 ប្រើ Caption គំរូខាងលើ (១០០% ដូចគំរូ)</span>
+              </button>
 
-            {/* Magic Generate Button */}
-            <button
-              onClick={handleGenerateCaptions}
-              disabled={isGeneratingAi || selectedPageIds.length === 0}
-              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500 hover:from-purple-500 hover:to-cyan-400 text-white font-bold text-xs shadow-lg shadow-purple-600/30 flex items-center justify-center gap-2 transition disabled:opacity-50"
-            >
-              <Sparkles className={`h-4 w-4 ${isGeneratingAi ? "animate-spin" : ""}`} />
-              <span>
-                {isGeneratingAi
-                  ? "AI កំពុងគិត និងបង្កើត Caption ទាំង ៨ ប្លែកៗគ្នា..."
-                  : `🪄 AI បង្កើត ${selectedPageIds.length} Captions ប្លែកៗគ្នា (${captionStyle.toUpperCase()})`}
-              </span>
-            </button>
+              <button
+                type="button"
+                onClick={handleGenerateCaptions}
+                disabled={isGeneratingAi || selectedPageIds.length === 0}
+                className="py-3 px-4 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500 hover:from-purple-500 hover:to-cyan-400 text-white font-bold text-xs shadow-lg shadow-purple-600/30 flex items-center justify-center gap-2 transition disabled:opacity-50"
+              >
+                <Sparkles className={`h-4 w-4 ${isGeneratingAi ? "animate-spin" : ""}`} />
+                <span>
+                  {isGeneratingAi
+                    ? "AI កំពុងកែច្នៃ Caption តាមគំរូ..."
+                    : `🪄 AI កែច្នៃតាម Page នីមួយៗ (${selectedPageIds.length} Pages)`}
+                </span>
+              </button>
+            </div>
           </div>
 
           {/* Individual Page Captions List (Accordion Cards) */}
