@@ -262,10 +262,12 @@ export default function VideoPublisherTab({
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
   const mainVideoRef = useRef<HTMLVideoElement>(null);
 
-  // Thumbnail State
+  // Thumbnail & Vision State
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const [thumbnailPreviewUrl, setThumbnailPreviewUrl] = useState<string>("");
   const [thumbnailDataUrl, setThumbnailDataUrl] = useState<string>("");
+  const [capturedVideoFrames, setCapturedVideoFrames] = useState<string[]>([]);
+  const [isExtractingFrames, setIsExtractingFrames] = useState<boolean>(false);
 
   // Re-authorize Facebook with pages_manage_posts and publish_video permissions
   const triggerFacebookReauth = () => {
@@ -308,8 +310,87 @@ export default function VideoPublisherTab({
     fetchHistory();
   }, []);
 
+  // Extract 3 distinct keyframes across the video duration for AI Vision
+  const extractFramesFromFile = (file: File): Promise<string[]> => {
+    return new Promise((resolve) => {
+      try {
+        const url = URL.createObjectURL(file);
+        const tempVideo = document.createElement("video");
+        tempVideo.preload = "metadata";
+        tempVideo.muted = true;
+        tempVideo.playsInline = true;
+        tempVideo.crossOrigin = "anonymous";
+        tempVideo.src = url;
+
+        const frames: string[] = [];
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+
+        let seekTargets: number[] = [];
+        let currentTargetIdx = 0;
+
+        const finish = () => {
+          URL.revokeObjectURL(url);
+          tempVideo.src = "";
+          tempVideo.remove();
+          resolve(frames);
+        };
+
+        const captureFrame = () => {
+          if (!ctx || !tempVideo.videoWidth) {
+            currentTargetIdx++;
+            if (currentTargetIdx < seekTargets.length) {
+              tempVideo.currentTime = seekTargets[currentTargetIdx];
+            } else {
+              finish();
+            }
+            return;
+          }
+          const scale = Math.min(1, 640 / Math.max(tempVideo.videoWidth, tempVideo.videoHeight));
+          canvas.width = Math.round(tempVideo.videoWidth * scale);
+          canvas.height = Math.round(tempVideo.videoHeight * scale);
+          ctx.drawImage(tempVideo, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+          frames.push(dataUrl);
+
+          currentTargetIdx++;
+          if (currentTargetIdx < seekTargets.length) {
+            tempVideo.currentTime = seekTargets[currentTargetIdx];
+          } else {
+            finish();
+          }
+        };
+
+        tempVideo.onloadedmetadata = () => {
+          const dur = tempVideo.duration || 10;
+          seekTargets = [
+            Math.min(dur * 0.15, 3),
+            Math.max(dur * 0.5, 4),
+            Math.max(dur * 0.8, dur - 2),
+          ].filter((t, i, arr) => arr.indexOf(t) === i);
+
+          tempVideo.currentTime = seekTargets[0];
+        };
+
+        tempVideo.onseeked = () => {
+          captureFrame();
+        };
+
+        tempVideo.onerror = () => {
+          finish();
+        };
+
+        setTimeout(() => {
+          if (frames.length === 0) finish();
+        }, 6000);
+      } catch {
+        resolve([]);
+      }
+    });
+  };
+
   // Handle local video upload
-  const handleVideoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleVideoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setVideoFile(file);
@@ -317,6 +398,23 @@ export default function VideoPublisherTab({
       setVideoPreviewUrl(url);
       if (!videoTitle) {
         setVideoTitle(file.name.replace(/\.[^/.]+$/, ""));
+      }
+
+      // Automatically extract keyframes for AI Vision Inspection & Thumbnails
+      setIsExtractingFrames(true);
+      try {
+        const frames = await extractFramesFromFile(file);
+        if (frames.length > 0) {
+          setCapturedVideoFrames(frames);
+          if (!thumbnailPreviewUrl) {
+            setThumbnailPreviewUrl(frames[0]);
+            setThumbnailDataUrl(frames[0]);
+          }
+        }
+      } catch (err) {
+        console.warn("Could not auto-extract frames:", err);
+      } finally {
+        setIsExtractingFrames(false);
       }
     }
   };
@@ -344,6 +442,7 @@ export default function VideoPublisherTab({
         const result = (event.target?.result as string) || "";
         setThumbnailPreviewUrl(result);
         setThumbnailDataUrl(result);
+        setCapturedVideoFrames((prev) => [result, ...prev.filter((f) => f !== result)].slice(0, 4));
       };
       reader.readAsDataURL(file);
     }
@@ -373,6 +472,7 @@ export default function VideoPublisherTab({
       setThumbnailPreviewUrl(dataUrl);
       setThumbnailDataUrl(dataUrl);
       setThumbnailFile(null);
+      setCapturedVideoFrames((prev) => [dataUrl, ...prev.filter((f) => f !== dataUrl)].slice(0, 4));
     } catch (e: any) {
       alert("មិនអាចចាប់យក Frame បានទេ (អាចបណ្ដាលមកពី CORS នៃ Video Link)។ សូម Upload រូបភាព Thumbnail ដោយផ្ទាល់");
     }
@@ -454,13 +554,19 @@ export default function VideoPublisherTab({
       );
 
       // Extract real visual frames from video / photo for multimodal inspection
-      let videoFrames: string[] = [];
-      if (mediaType === "video" && mainVideoRef.current) {
-        videoFrames = await extractVideoKeyframes(mainVideoRef.current);
+      let videoFrames: string[] = [...capturedVideoFrames];
+      if (videoFrames.length === 0 && videoFile) {
+        videoFrames = await extractFramesFromFile(videoFile);
+        if (videoFrames.length > 0) setCapturedVideoFrames(videoFrames);
+      }
+      if (videoFrames.length === 0 && mainVideoRef.current && mainVideoRef.current.videoWidth) {
+        const extraFrames = await extractVideoKeyframes(mainVideoRef.current);
+        if (extraFrames.length > 0) videoFrames = extraFrames;
+      }
+      if (thumbnailDataUrl && !videoFrames.includes(thumbnailDataUrl)) {
+        videoFrames.unshift(thumbnailDataUrl);
       } else if (mediaType === "photo" && photoPreviewUrl && photoPreviewUrl.startsWith("data:")) {
         videoFrames = [photoPreviewUrl];
-      } else if (thumbnailDataUrl) {
-        videoFrames = [thumbnailDataUrl];
       }
 
       const res = await fetch("/api/video-publisher", {
@@ -852,6 +958,7 @@ export default function VideoPublisherTab({
                           setThumbnailFile(null);
                           setThumbnailPreviewUrl("");
                           setThumbnailDataUrl("");
+                          setCapturedVideoFrames([]);
                         }}
                         className="absolute top-2 right-2 p-1.5 rounded-full bg-black/70 text-slate-300 hover:text-white"
                         title="លុបចេញ"
@@ -859,6 +966,70 @@ export default function VideoPublisherTab({
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
+
+                    {/* AI VIDEO VISION INSPECTION FRAMES PREVIEW */}
+                    {(capturedVideoFrames.length > 0 || isExtractingFrames) && (
+                      <div className="rounded-xl border border-cyan-500/40 bg-gradient-to-r from-cyan-950/40 via-slate-900 to-indigo-950/40 p-3 space-y-2 shadow-inner">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <span className="p-1 rounded bg-cyan-500/20 text-cyan-300">
+                              <Sparkles className="h-3.5 w-3.5 text-cyan-400" />
+                            </span>
+                            <span className="text-xs font-bold text-white">
+                              👁️ ប្លង់វីដេអូដែល AI បានពិនិត្យឃើញ ({capturedVideoFrames.length} Frames):
+                            </span>
+                          </div>
+                          {isExtractingFrames ? (
+                            <span className="text-[10px] text-amber-300 bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 rounded-full font-semibold animate-pulse flex items-center gap-1">
+                              <RefreshCw className="h-3 w-3 animate-spin" /> កំពុងស្កេនប្លង់...
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-emerald-300 bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
+                              ✓ AI Vision Ready
+                            </span>
+                          )}
+                        </div>
+
+                        {capturedVideoFrames.length > 0 && (
+                          <div className="grid grid-cols-3 gap-2">
+                            {capturedVideoFrames.map((frame, idx) => (
+                              <div
+                                key={idx}
+                                onClick={() => {
+                                  setThumbnailPreviewUrl(frame);
+                                  setThumbnailDataUrl(frame);
+                                  setThumbnailFile(null);
+                                }}
+                                className={`relative aspect-video rounded-lg overflow-hidden border cursor-pointer transition group bg-black shadow ${
+                                  thumbnailDataUrl === frame
+                                    ? "border-emerald-400 ring-2 ring-emerald-500/50"
+                                    : "border-cyan-500/30 hover:border-cyan-400"
+                                }`}
+                                title="ចុចដើម្បីកំណត់រូបនេះធ្វើជា Thumbnail ក្របវីដេអូ"
+                              >
+                                <img
+                                  src={frame}
+                                  alt={`Scene ${idx + 1}`}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition duration-200"
+                                />
+                                <span className="absolute bottom-1 right-1 text-[9px] bg-black/80 backdrop-blur text-cyan-300 px-1 py-0.2 rounded font-mono">
+                                  ប្លង់ #{idx + 1}
+                                </span>
+                                {thumbnailDataUrl === frame && (
+                                  <span className="absolute top-1 left-1 text-[8px] bg-emerald-500 text-white font-bold px-1 rounded">
+                                    ★ Thumbnail
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <p className="text-[10px] text-slate-400 leading-tight">
+                          💡 AI ពិនិត្យឃើញសកម្មភាព ផលិតផល និងអក្សរក្នុងប្លង់ទាំងនេះ ដើម្បីសរសេរ Caption ឱ្យចំសាច់រឿងជាក់ស្តែង (បងអាចចុចលើប្លង់ណា ១ ដើម្បីយកធ្វើជា Thumbnail ផងដែរ)
+                        </p>
+                      </div>
+                    )}
 
                     {/* VIDEO THUMBNAIL / THEMNNEL CARD */}
                     <div className="rounded-xl border border-indigo-500/30 bg-slate-900/90 p-3 space-y-2.5">

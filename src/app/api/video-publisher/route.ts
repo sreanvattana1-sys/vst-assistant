@@ -668,21 +668,30 @@ export async function POST(req: NextRequest) {
             .join("\n");
 
           const prompt = `You are an elite Cambodian digital marketing copywriter and conversion rate optimization (CRO) specialist for Emmi and Kidney Pro.
-The user wants to publish a Facebook Video, Reel, or Photo across multiple Facebook pages.
+The user wants to publish a Facebook Video across multiple Facebook pages.
 
 ${Array.isArray(videoFrames) && videoFrames.length > 0 ? `
-*** MULTIMODAL VIDEO INSPECTION REQUIRED ***
-You have been provided with ${videoFrames.length} real visual keyframes extracted directly from the video scenes.
-CAREFULLY INSPECT THE ATTACHED IMAGES:
-1. Identify the products visually featured (e.g., Emmi feminine care bottles, spray, packages, or Kidney Pro capsules/tea, or health explanations).
-2. Read any on-screen Khmer or English text, bullet points, price tags, or promotions.
-3. Tailor the captions to reflect the exact visual scenes and product benefits seen in the video!
+*** CRITICAL REQUIREMENT: REAL MULTIMODAL VIDEO INSPECTION ***
+You are provided with ${videoFrames.length} real visual keyframes directly extracted from the user's video scenes!
+STEP 1: INSPECT THE ATTACHED FRAMES CAREFULLY:
+- Who/what is in the video? (Customer, doctor, presenter, woman, man, CEO, product bottles, packaging, tea, supplements)
+- What action or demonstration is happening? (Applying/spraying, holding product, talking/explaining, testing, unboxing, showing symptoms, demonstration)
+- What text, numbers, prices, or promotion words appear on the video screen?
+
+STEP 2: WRITE THE CAPTION'S OPENING HOOK BASED SPECIFICALLY ON WHAT IS SHOWN IN THIS VIDEO:
+The VERY FIRST 1-3 LINES of each caption MUST hook the viewer by directly describing what is happening in the video!
+Examples of how the captions MUST open:
+- "ដូចដែលបងៗបានឃើញក្នុងវីដេអូនេះស្រាប់ គឺបង្ហាញពី..."
+- "តោះមកមើលការបង្ហាញជាក់ស្តែងក្នុងវីដេអូនេះទាំងអស់គ្នា..."
+- "វីដេអូនេះនឹងបង្ហាញជូនបងៗពីរបៀប..."
+- "តើបងប្អូនកំពុងជួបប្រទះបញ្ហាដូចក្នុងវីដេអូនេះមែនទេ?..."
+DO NOT output generic boilerplate slogans without referencing what is visually seen in the video!
 ` : ""}
 
 VIDEO/MEDIA TITLE:
 "${videoTitle || "វីដេអូផ្សព្វផ្សាយ"}"
 
-ACTUAL VIDEO / MEDIA CONTENT & PROMOTION:
+USER'S STORY & PROMO NOTE:
 "${realContent}"
 
 CHOSEN CAPTION STRATEGY:
@@ -691,60 +700,20 @@ CHOSEN CAPTION STRATEGY:
 TARGET PAGES TO GENERATE CAPTIONS FOR:
 ${pagesPromptList}
 
-GOLD-STANDARD EXAMPLES OF WHAT THE USER LOVES (FOLLOW THIS EXACT TONE, BULLETS, AND FORMAT):
+HOW TO TAILOR BY PAGE CATEGORY:
+1. For Kidney Pro pages: Connect what is seen in the video to kidney health, night urination relief (នោមញឹក), back pain (ចុកចង្កេះ), and natural detox.
+2. For Emmi Feminine Health & Daily Care pages: Connect what is seen in the video to women's intimate care, daily freshness, discharge relief (ធ្លាក់/ស), menstrual comfort, and Korean standard care.
+3. For Emmi Promotion & Cambodia pages: Connect the video demonstration to special bundle promotions (ទិញ ២ ថែម ១), free delivery, and nationwide support.
+4. For Emmi CEO / Brand pages: Highlight CEO guarantee, 100% genuine Korean ingredients, and medical safety.
 
---- GOLD STANDARD EXAMPLE 1 (Feminine Health Daily Care - Emmi): ---
-ស្ត្រីជាច្រើនអាចជួបប្រទះបញ្ហាដូចជា៖
-💗 អារម្មណ៍មិនស្រួលនៅតំបន់សម្ងាត់
-💗 ក្លិនមិនស្រស់ស្រាយ
-💗 សំណើម ឬទឹករំអិលប្រែប្រួល
-💗 អារម្មណ៍រមាស់ ឬរំខាន
-💗 ភាពស្ងួត និងមិនស្រួលខ្លួន
-💗 ការប្រែប្រួលដែលកើតឡើងតាមវ័យ និងរបៀបរស់នៅ
-🇰🇷 Emmi (អេមមី) ជាផលិតផលថែរក្សាសុខភាពនារី ស្តង់ដារកូរ៉េសម្រាប់ថែរក្សាខ្លួនប្រចាំថ្ងៃ។
-✨ ងាយស្រួលប្រើ
-✨ សម្រាប់ការថែរក្សាប្រចាំថ្ងៃ
-✨ គុណភាពតាមស្តង់ដារកូរ៉េ
-✨ ជួយឲ្យការថែរក្សាខ្លួនកាន់តែងាយស្រួល
-📩 ចង់ដឹងព័ត៌មានលម្អិត របៀបប្រើ និងតម្លៃ សូមផ្ញើសារមក Page
+CRITICAL POLICY SAFEGUARD (MANDATORY):
+Always use dots or slashes on sensitive body/health words so Facebook NEVER flags or restricts the post:
+e.g. 'ទ្វារ.មាស', 'ធ្លាក់/ស', 'ស្ងួតទ្វា.មាស់', 'សិរមាន់ HVP', 'បញ្ហាស្បូន'.
 
---- GOLD STANDARD EXAMPLE 2 (Treatment & Natural Healing - Emmi): ---
-ធ្លាក់ស រដូវមកមិនទៀង មានក្លិនមិនល្អ... ឈប់បារម្ភទៀតទៅ! 
-Emmi ជំនួយការពិសេសសម្រាប់សុខភាពស្ត្រី។ ផលិតផលដែលរួមផ្សំឡើងពីគ្រឿងផ្សំធម្មជាតិជិត ២០មុខ ជួយដោះស្រាយបញ្ហា៖
-✅ រដូវមកមិនទៀង និងឈឺចាប់ខ្លាំង
-✅ ធ្លាក់/ស រមាស់ និងមានក្លិន
-✅ ផ្សិតក្នុងទ្វារ.មាស
-✅ សិរមាន់ HVP
-✅ ស្ងួតទ្វា.មាស់
-✅ បញ្ហាស្បូន...
-🛡️ ជួយឱ្យរដូវមកទៀងទាត់ ផ្តល់ទំនוקចិត្ត និងសុខភាពល្អពីខាងក្នុង! ឃើញប្រសិទ្ធភាពលឿន... 
-👉 ឆាតមកយើងឥឡូវនេះដើម្បីទទួលបានការប្រឹក្សាយោបល់ឥតគិតថ្លៃ!
-
---- GOLD STANDARD EXAMPLE 3 (Kidney Pro): ---
-បងប្អូនជាច្រើនអាចជួបប្រទះបញ្ហាដូចជា៖
-🌿 នោមញឹកពេលយប់លើសពី ២-៣ ដង
-🌿 នោមទាស់ នោមរអាក់រអួល ឬឈឺផ្សា
-🌿 ចុកចង្កេះ ចុករួយខ្នង ងើបមិនចង់រួច
-🌿 អស់កម្លាំងល្ហិតល្ហៃ គេងមិនលក់ស្រួល
-🌿 សញ្ញាជាតិពុលកើនឡើងក្នុងតម្រងនោម
-🛡️ Kidney Pro (ឃីដនី ប្រូ) ជំនួយតម្រងនោម និងបន្សុទ្ធជាតិពុល ផ្សំពីរុក្ខជាតិឱសថធម្មជាតិ៖
-✅ សម្រួលការបត់ជើងតូចឱ្យស្រួល គេងលក់ពេញមួយយប់
-✅ បំបាត់អាការៈចុកចង្កេះ និងអស់កម្លាំង
-✅ ជំនួយកោសិកាតម្រងនោមឱ្យរឹងមាំយូរអង្វែង
-✅ គុណភាពស្ដង់ដារ ទុកចិត្តបាន ១០០%
-📩 ឆាតមកកាន់យើងខ្ញុំឥឡូវនេះ ដើម្បីទទួលបានការប្រឹក្សាសុខភាពដោយឥតគិតថ្លៃ!
-
-CRITICAL COPYWRITING RULES:
-1. MATCH THE GOLD STANDARDS ABOVE: Write in this exact authentic tone, flow, and formatting. Do not write generic slogans!
-2. FACEBOOK POLICY SAFEGUARD: Always use dots/slashes on sensitive body/health words so Facebook doesn't flag the post (e.g., 'ទ្វារ.មាស', 'ធ្លាក់/ស', 'ស្ងួតទ្វា.មាស់', 'សិរមាន់ HVP', 'បញ្ហាស្បូន').
-3. EMMI PRODUCTS: Always feature "🇰🇷 Emmi (អេមមី) ស្តង់ដារកូរ៉េ" or "រួមផ្សំឡើងពីគ្រឿងផ្សំធម្មជាតិជិត ២០មុខ".
-4. KIDNEY PRODUCTS: For Kidney pages, focus on Kidney Pro, urination ease, night urination relief, back pain relief, detox.
-5. 100% RELEVANT TO MEDIA CONTENT: Weave in any specific promotion or video details observed visually or described in "${realContent}".
-6. DIFFERENTIATION: Make sure each page's caption is slightly tailored and distinct (e.g. Care/Daily focus vs Treatment focus vs Promotion package focus vs Kidney focus).
-7. Output MUST be valid JSON mapping each Page ID to its generated Khmer caption text.
-Example format:
+OUTPUT FORMAT:
+Return ONLY valid JSON mapping each Page ID to its custom, video-inspected Khmer caption:
 {
-  "${pages[0]?.id}": "caption in Khmer...",
+  "${pages[0]?.id}": "caption in Khmer with emojis and video hook...",
   "${pages[1]?.id || "2"}": "caption in Khmer..."
 }`;
 
