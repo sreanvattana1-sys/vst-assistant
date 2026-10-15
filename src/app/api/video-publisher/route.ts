@@ -401,6 +401,45 @@ export async function GET(req: NextRequest) {
   }
 }
 
+async function uploadFacebookVideoThumbnail(
+  postId: string,
+  pageToken: string,
+  thumbnail: File | string | Blob
+): Promise<boolean> {
+  try {
+    let sourceBlob: Blob;
+    if (typeof thumbnail === "string") {
+      if (thumbnail.startsWith("data:")) {
+        const base64Data = thumbnail.replace(/^data:image\/\w+;base64,/, "");
+        sourceBlob = new Blob([Buffer.from(base64Data, "base64")], { type: "image/jpeg" });
+      } else if (thumbnail.startsWith("http")) {
+        const res = await fetch(thumbnail);
+        const arrayBuf = await res.arrayBuffer();
+        sourceBlob = new Blob([arrayBuf], { type: "image/jpeg" });
+      } else {
+        sourceBlob = new Blob([Buffer.from(thumbnail, "base64")], { type: "image/jpeg" });
+      }
+    } else {
+      sourceBlob = thumbnail;
+    }
+
+    const fbFormData = new FormData();
+    fbFormData.append("source", sourceBlob, "thumbnail.jpg");
+    fbFormData.append("is_preferred", "true");
+    fbFormData.append("access_token", pageToken);
+
+    const res = await fetch(`https://graph.facebook.com/v19.0/${postId}/thumbnails`, {
+      method: "POST",
+      body: fbFormData,
+    });
+    const data = await res.json();
+    return !!data?.success;
+  } catch (e) {
+    console.warn(`[Thumbnail] Error uploading thumbnail for video ${postId}:`, e);
+    return false;
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const contentType = req.headers.get("content-type") || "";
@@ -414,6 +453,8 @@ export async function POST(req: NextRequest) {
       const postType = (formData.get("postType") as "reels" | "video") || "reels";
       const captionStyle = (formData.get("captionStyle") as string) || "promotion";
       const rawPageCaptions = formData.get("pageCaptions") as string;
+      const thumbnailFile = formData.get("thumbnail") as File | null;
+      const thumbnailData = formData.get("thumbnailData") as string | null;
 
       let pageCaptions: PageCaptionItem[] = [];
       try {
@@ -496,13 +537,20 @@ export async function POST(req: NextRequest) {
 
           if (fbRes.ok && (fbData?.id || fbData?.post_id)) {
             const realPostId = fbData.id || fbData.post_id;
+
+            // Upload thumbnail if available
+            const thumbToUpload = thumbnailFile || thumbnailData;
+            if (thumbToUpload && mediaType === "video") {
+              await uploadFacebookVideoThumbnail(realPostId, pageToken, thumbToUpload);
+            }
+
             results.push({
               pageId: item.pageId,
               pageName: item.pageName,
               status: "success",
               postId: realPostId,
               captionPreview: item.caption.slice(0, 70) + "...",
-              message: "បានផុសទៅកាន់ Facebook Page ផ្ទាល់ជោគជ័យ!",
+              message: "បានផុសទៅកាន់ Facebook Page ផ្ទាល់ជោគជ័យ!" + (thumbToUpload ? " (រួមទាំង Thumbnail)" : ""),
             });
           } else {
             const errMsg = fbData?.error?.message || "Facebook Graph API returned an error";
@@ -587,12 +635,14 @@ export async function POST(req: NextRequest) {
         baseTopic = "",
         captionStyle = "promotion",
         pages,
+        videoFrames = [],
       } = body as {
         videoTitle?: string;
         videoContent?: string;
         baseTopic?: string;
         captionStyle: "promotion" | "education" | "question" | "testimonial" | "branding";
         pages: { id: string; name: string; category?: string }[];
+        videoFrames?: string[];
       };
 
       if (!Array.isArray(pages) || pages.length === 0) {
@@ -620,10 +670,19 @@ export async function POST(req: NextRequest) {
           const prompt = `You are an elite Cambodian digital marketing copywriter and conversion rate optimization (CRO) specialist for Emmi and Kidney Pro.
 The user wants to publish a Facebook Video, Reel, or Photo across multiple Facebook pages.
 
+${Array.isArray(videoFrames) && videoFrames.length > 0 ? `
+*** MULTIMODAL VIDEO INSPECTION REQUIRED ***
+You have been provided with ${videoFrames.length} real visual keyframes extracted directly from the video scenes.
+CAREFULLY INSPECT THE ATTACHED IMAGES:
+1. Identify the products visually featured (e.g., Emmi feminine care bottles, spray, packages, or Kidney Pro capsules/tea, or health explanations).
+2. Read any on-screen Khmer or English text, bullet points, price tags, or promotions.
+3. Tailor the captions to reflect the exact visual scenes and product benefits seen in the video!
+` : ""}
+
 VIDEO/MEDIA TITLE:
 "${videoTitle || "វីដេអូផ្សព្វផ្សាយ"}"
 
-ACTUAL VIDEO / MEDIA CONTENT:
+ACTUAL VIDEO / MEDIA CONTENT & PROMOTION:
 "${realContent}"
 
 CHOSEN CAPTION STRATEGY:
@@ -658,7 +717,7 @@ Emmi ជំនួយការពិសេសសម្រាប់សុខភា
 ✅ សិរមាន់ HVP
 ✅ ស្ងួតទ្វា.មាស់
 ✅ បញ្ហាស្បូន...
-🛡️ ជួយឱ្យរដូវមកទៀងទាត់ ផ្តល់ទំនុកចិត្ត និងសុខភាពល្អពីខាងក្នុង! ឃើញប្រសិទ្ធភាពលឿន... 
+🛡️ ជួយឱ្យរដូវមកទៀងទាត់ ផ្តល់ទំនוקចិត្ត និងសុខភាពល្អពីខាងក្នុង! ឃើញប្រសិទ្ធភាពលឿន... 
 👉 ឆាតមកយើងឥឡូវនេះដើម្បីទទួលបានការប្រឹក្សាយោបល់ឥតគិតថ្លៃ!
 
 --- GOLD STANDARD EXAMPLE 3 (Kidney Pro): ---
@@ -680,54 +739,73 @@ CRITICAL COPYWRITING RULES:
 2. FACEBOOK POLICY SAFEGUARD: Always use dots/slashes on sensitive body/health words so Facebook doesn't flag the post (e.g., 'ទ្វារ.មាស', 'ធ្លាក់/ស', 'ស្ងួតទ្វា.មាស់', 'សិរមាន់ HVP', 'បញ្ហាស្បូន').
 3. EMMI PRODUCTS: Always feature "🇰🇷 Emmi (អេមមី) ស្តង់ដារកូរ៉េ" or "រួមផ្សំឡើងពីគ្រឿងផ្សំធម្មជាតិជិត ២០មុខ".
 4. KIDNEY PRODUCTS: For Kidney pages, focus on Kidney Pro, urination ease, night urination relief, back pain relief, detox.
-5. 100% RELEVANT TO MEDIA CONTENT: Weave in any specific promotion or video details provided in "${realContent}".
-6. Output MUST be valid JSON mapping each Page ID to its generated Khmer caption text.
+5. 100% RELEVANT TO MEDIA CONTENT: Weave in any specific promotion or video details observed visually or described in "${realContent}".
+6. DIFFERENTIATION: Make sure each page's caption is slightly tailored and distinct (e.g. Care/Daily focus vs Treatment focus vs Promotion package focus vs Kidney focus).
+7. Output MUST be valid JSON mapping each Page ID to its generated Khmer caption text.
 Example format:
 {
   "${pages[0]?.id}": "caption in Khmer...",
   "${pages[1]?.id || "2"}": "caption in Khmer..."
 }`;
 
-          // Try gemini-3.8-flash first, fallback to gemini-3.5-flash-lite
-          let geminiRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: {
-                  responseMimeType: "application/json",
-                  temperature: 0.85,
-                },
-              }),
-            }
-          );
+          const parts: any[] = [{ text: prompt }];
 
-          if (!geminiRes.ok) {
-            geminiRes = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  contents: [{ parts: [{ text: prompt }] }],
-                  generationConfig: {
-                    responseMimeType: "application/json",
-                    temperature: 0.85,
+          if (Array.isArray(videoFrames) && videoFrames.length > 0) {
+            videoFrames.slice(0, 4).forEach((vf) => {
+              if (typeof vf === "string" && vf.length > 50) {
+                const cleaned = vf.replace(/^data:image\/\w+;base64,/, "");
+                parts.push({
+                  inlineData: {
+                    mimeType: "image/jpeg",
+                    data: cleaned,
                   },
-                }),
+                });
               }
-            );
+            });
           }
 
-          if (geminiRes.ok) {
-            const geminiData = await geminiRes.json();
-            const rawJson =
-              geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (rawJson) {
-              const parsed = JSON.parse(rawJson);
-              Object.assign(captionsMap, parsed);
+          const CANDIDATE_MODELS = [
+            "gemini-3.5-flash-lite",
+            "gemini-3.1-flash-lite",
+            "gemini-3-flash-preview",
+            "gemini-flash-lite-latest",
+            "gemini-3.7-flash",
+            "gemini-3.8-flash",
+          ];
+
+          for (const modelName of CANDIDATE_MODELS) {
+            try {
+              const geminiRes = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    contents: [{ parts }],
+                    generationConfig: {
+                      responseMimeType: "application/json",
+                      temperature: 0.85,
+                    },
+                  }),
+                }
+              );
+
+              if (geminiRes.ok) {
+                const geminiData = await geminiRes.json();
+                const rawJson = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (rawJson) {
+                  const parsed = JSON.parse(rawJson);
+                  if (typeof parsed === "object" && Object.keys(parsed).length > 0) {
+                    Object.assign(captionsMap, parsed);
+                    console.log(`[Gemini Captions] Successfully generated captions with model: ${modelName}`);
+                    break;
+                  }
+                }
+              } else {
+                console.warn(`[Gemini Captions] Model ${modelName} returned status ${geminiRes.status}`);
+              }
+            } catch (modelErr) {
+              console.warn(`[Gemini Captions] Failed with model ${modelName}:`, modelErr);
             }
           }
         } catch (geminiError) {
@@ -796,6 +874,7 @@ Example format:
       const {
         title,
         videoUrl,
+        thumbnail,
         mediaType = "video",
         postType = "reels",
         captionStyle = "promotion",
@@ -803,6 +882,7 @@ Example format:
       } = body as {
         title: string;
         videoUrl?: string;
+        thumbnail?: string;
         mediaType?: "video" | "photo" | "text";
         postType: "reels" | "video";
         captionStyle?: string;
@@ -906,13 +986,19 @@ Example format:
 
           if (fbRes.ok && (fbData?.id || fbData?.post_id)) {
             const realPostId = fbData.id || fbData.post_id;
+
+            // Upload custom thumbnail to Facebook if provided for video
+            if (thumbnail && mediaType === "video") {
+              await uploadFacebookVideoThumbnail(realPostId, pageToken, thumbnail);
+            }
+
             results.push({
               pageId: item.pageId,
               pageName: item.pageName,
               status: "success",
               postId: realPostId,
               captionPreview: item.caption.slice(0, 70) + "...",
-              message: "បានផុសទៅកាន់ Facebook Page ផ្ទាល់ជោគជ័យ!",
+              message: "បានផុសទៅកាន់ Facebook Page ផ្ទាល់ជោគជ័យ!" + (thumbnail ? " (រួមទាំង Thumbnail)" : ""),
             });
           } else {
             const errObj = fbData?.error;

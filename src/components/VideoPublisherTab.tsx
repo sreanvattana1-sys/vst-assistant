@@ -256,9 +256,16 @@ export default function VideoPublisherTab({
   }[] | null>(null);
   const [isReauthorizing, setIsReauthorizing] = useState(false);
 
-  // Refs for file inputs
+  // Refs for file inputs and video player
   const videoInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const thumbnailInputRef = useRef<HTMLInputElement>(null);
+  const mainVideoRef = useRef<HTMLVideoElement>(null);
+
+  // Thumbnail State
+  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
+  const [thumbnailPreviewUrl, setThumbnailPreviewUrl] = useState<string>("");
+  const [thumbnailDataUrl, setThumbnailDataUrl] = useState<string>("");
 
   // Re-authorize Facebook with pages_manage_posts and publish_video permissions
   const triggerFacebookReauth = () => {
@@ -327,6 +334,84 @@ export default function VideoPublisherTab({
     }
   };
 
+  // Handle local thumbnail image upload
+  const handleThumbnailFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setThumbnailFile(file);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const result = (event.target?.result as string) || "";
+        setThumbnailPreviewUrl(result);
+        setThumbnailDataUrl(result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // 1-Click Frame Capture from currently playing / paused video
+  const captureThumbnailFromCurrentVideo = () => {
+    if (!mainVideoRef.current) {
+      alert("សូម Upload វីដេអូ ឬរង់ចាំវីដេអូ Load រួចរាល់ជាមុនសិន!");
+      return;
+    }
+    const video = mainVideoRef.current;
+    if (!video.videoWidth || !video.videoHeight) {
+      alert("វីដេអូមិនទាន់ Load រួចរាល់ទេ។ សូមចុច Play បន្តិចរួចសាកល្បងម្ដងទៀត!");
+      return;
+    }
+
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
+      setThumbnailPreviewUrl(dataUrl);
+      setThumbnailDataUrl(dataUrl);
+      setThumbnailFile(null);
+    } catch (e: any) {
+      alert("មិនអាចចាប់យក Frame បានទេ (អាចបណ្ដាលមកពី CORS នៃ Video Link)។ សូម Upload រូបភាព Thumbnail ដោយផ្ទាល់");
+    }
+  };
+
+  // Extract keyframes for Gemini Multimodal AI Video Inspection
+  const extractVideoKeyframes = async (videoElement: HTMLVideoElement): Promise<string[]> => {
+    return new Promise((resolve) => {
+      try {
+        const frames: string[] = [];
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx || !videoElement.videoWidth) {
+          resolve([]);
+          return;
+        }
+
+        // Limit dimension to 640px for super fast Gemini inference
+        const scale = Math.min(1, 640 / Math.max(videoElement.videoWidth, videoElement.videoHeight));
+        canvas.width = Math.round(videoElement.videoWidth * scale);
+        canvas.height = Math.round(videoElement.videoHeight * scale);
+
+        // 1. Always capture current visible frame
+        ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+        frames.push(canvas.toDataURL("image/jpeg", 0.82));
+
+        // 2. If thumbnailDataUrl is already set, include it
+        if (thumbnailDataUrl && !frames.includes(thumbnailDataUrl)) {
+          frames.push(thumbnailDataUrl);
+        }
+
+        resolve(frames);
+      } catch (err) {
+        console.warn("Could not capture video frames:", err);
+        resolve([]);
+      }
+    });
+  };
+
   // Toggle page selection
   const togglePageSelect = (id: string) => {
     if (selectedPageIds.includes(id)) {
@@ -355,7 +440,7 @@ export default function VideoPublisherTab({
     setSelectedPageIds((prev) => prev.filter((id) => !displayedIds.includes(id)));
   };
 
-  // Trigger Deep AI Caption Generation with Gemini 3.8 Flash
+  // Trigger Deep AI Caption Generation with Gemini Multimodal Video Inspection
   const handleGenerateCaptions = async () => {
     if (selectedPageIds.length === 0) {
       alert("សូមជ្រើសរើស Page យ៉ាងហោចណាស់ ១ ជាមុនសិន!");
@@ -368,6 +453,16 @@ export default function VideoPublisherTab({
         selectedPageIds.includes(p.id)
       );
 
+      // Extract real visual frames from video / photo for multimodal inspection
+      let videoFrames: string[] = [];
+      if (mediaType === "video" && mainVideoRef.current) {
+        videoFrames = await extractVideoKeyframes(mainVideoRef.current);
+      } else if (mediaType === "photo" && photoPreviewUrl && photoPreviewUrl.startsWith("data:")) {
+        videoFrames = [photoPreviewUrl];
+      } else if (thumbnailDataUrl) {
+        videoFrames = [thumbnailDataUrl];
+      }
+
       const res = await fetch("/api/video-publisher", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -378,6 +473,7 @@ export default function VideoPublisherTab({
           baseTopic,
           captionStyle,
           pages: targetPages,
+          videoFrames,
         }),
       });
 
@@ -548,6 +644,7 @@ export default function VideoPublisherTab({
           action: "publish_video",
           title: videoTitle || (mediaType === "video" ? "វីដេអូផ្សព្វផ្សាយ" : mediaType === "photo" ? "រូបភាពផ្សព្វផ្សាយ" : "អត្ថបទផ្សព្វផ្សាយ"),
           videoUrl: finalMediaUrl,
+          thumbnail: thumbnailDataUrl || undefined,
           mediaType,
           postType,
           captionStyle,
@@ -728,33 +825,155 @@ export default function VideoPublisherTab({
             {mediaType === "video" && (
               <>
                 {videoPreviewUrl ? (
-                  <div className="relative rounded-xl overflow-hidden border border-slate-700 bg-black aspect-video flex items-center justify-center">
-                    <video
-                      src={videoPreviewUrl}
-                      controls
-                      className="w-full h-full object-contain"
-                    />
-                    <div className="absolute bottom-2 left-2 px-2.5 py-1 rounded-lg bg-black/80 backdrop-blur border border-white/10 text-[11px] text-white flex items-center gap-1.5 shadow-lg">
-                      {videoFile && videoFile.size > 48 * 1024 * 1024 ? (
-                        <span className="text-amber-400 font-semibold flex items-center gap-1">
-                          ⚡ {(videoFile.size / (1024 * 1024)).toFixed(1)} MB (ទំហំធំ: ប្រើប្រាស់ High-Capacity Cloud)
-                        </span>
-                      ) : (
-                        <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                          ⚡ {videoFile ? `${(videoFile.size / (1024 * 1024)).toFixed(1)} MB (Fast Cloud)` : ""}
-                        </span>
-                      )}
+                  <div className="space-y-3">
+                    <div className="relative rounded-xl overflow-hidden border border-slate-700 bg-black aspect-video flex items-center justify-center">
+                      <video
+                        ref={mainVideoRef}
+                        src={videoPreviewUrl}
+                        controls
+                        crossOrigin="anonymous"
+                        className="w-full h-full object-contain"
+                      />
+                      <div className="absolute bottom-2 left-2 px-2.5 py-1 rounded-lg bg-black/80 backdrop-blur border border-white/10 text-[11px] text-white flex items-center gap-1.5 shadow-lg">
+                        {videoFile && videoFile.size > 48 * 1024 * 1024 ? (
+                          <span className="text-amber-400 font-semibold flex items-center gap-1">
+                            ⚡ {(videoFile.size / (1024 * 1024)).toFixed(1)} MB (ទំហំធំ: ប្រើប្រាស់ High-Capacity Cloud)
+                          </span>
+                        ) : (
+                          <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                            ⚡ {videoFile ? `${(videoFile.size / (1024 * 1024)).toFixed(1)} MB (Fast Cloud)` : ""}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => {
+                          setVideoFile(null);
+                          setVideoPreviewUrl("");
+                          setThumbnailFile(null);
+                          setThumbnailPreviewUrl("");
+                          setThumbnailDataUrl("");
+                        }}
+                        className="absolute top-2 right-2 p-1.5 rounded-full bg-black/70 text-slate-300 hover:text-white"
+                        title="លុបចេញ"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
-                    <button
-                      onClick={() => {
-                        setVideoFile(null);
-                        setVideoPreviewUrl("");
-                      }}
-                      className="absolute top-2 right-2 p-1.5 rounded-full bg-black/70 text-slate-300 hover:text-white"
-                      title="លុបចេញ"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+
+                    {/* VIDEO THUMBNAIL / THEMNNEL CARD */}
+                    <div className="rounded-xl border border-indigo-500/30 bg-slate-900/90 p-3 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="p-1.5 rounded-lg bg-pink-500/20 text-pink-400">
+                            <ImageIcon className="h-3.5 w-3.5" />
+                          </div>
+                          <div>
+                            <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                              🖼️ រូបភាពក្រប (Thumbnail / Themnel)
+                            </span>
+                            <p className="text-[10px] text-slate-400">
+                              កំណត់រូបភាពក្របសម្រាប់បង្ហាញលើ Facebook Feed & Reels មុនចុចមើល
+                            </p>
+                          </div>
+                        </div>
+                        {thumbnailPreviewUrl && (
+                          <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
+                            ✓ បានកំណត់
+                          </span>
+                        )}
+                      </div>
+
+                      {thumbnailPreviewUrl ? (
+                        <div className="flex items-center gap-3 p-2 rounded-xl bg-slate-800/80 border border-slate-700">
+                          <div className="relative w-24 h-16 rounded-lg overflow-hidden border border-slate-600 bg-black shrink-0">
+                            <img
+                              src={thumbnailPreviewUrl}
+                              alt="Thumbnail Preview"
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div className="flex-1 space-y-1">
+                            <p className="text-[11px] font-semibold text-emerald-300 truncate">
+                              {thumbnailFile ? `📁 រូបភាព: ${thumbnailFile.name}` : "📸 ចាប់យក Frame ពីវីដេអូ"}
+                            </p>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={captureThumbnailFromCurrentVideo}
+                                className="text-[10px] px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition flex items-center gap-1"
+                              >
+                                <span>📸 ចាប់ Frame ថ្មី</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => thumbnailInputRef.current?.click()}
+                                className="text-[10px] px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium transition flex items-center gap-1"
+                              >
+                                <span>🖼️ ប្តូររូប</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setThumbnailFile(null);
+                                  setThumbnailPreviewUrl("");
+                                  setThumbnailDataUrl("");
+                                }}
+                                className="text-[10px] p-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900 border border-rose-800/50 text-rose-300 transition"
+                                title="លុប Thumbnail"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={captureThumbnailFromCurrentVideo}
+                            className="p-2.5 rounded-xl border border-indigo-500/40 bg-indigo-950/30 hover:bg-indigo-900/40 text-left transition flex items-center gap-2.5 group"
+                          >
+                            <div className="p-2 rounded-lg bg-indigo-500/20 text-indigo-300 group-hover:scale-105 transition">
+                              📸
+                            </div>
+                            <div>
+                              <span className="text-[11px] font-bold text-white block">
+                                ចាប់យក Frame ពីវីដេអូ
+                              </span>
+                              <span className="text-[9px] text-slate-400">
+                                ផ្អាកត្រង់ប្លង់ស្អាត រួចចុចយក
+                              </span>
+                            </div>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => thumbnailInputRef.current?.click()}
+                            className="p-2.5 rounded-xl border border-purple-500/40 bg-purple-950/30 hover:bg-purple-900/40 text-left transition flex items-center gap-2.5 group"
+                          >
+                            <div className="p-2 rounded-lg bg-purple-500/20 text-purple-300 group-hover:scale-105 transition">
+                              🖼️
+                            </div>
+                            <div>
+                              <span className="text-[11px] font-bold text-white block">
+                                Upload រូប Thumbnail
+                              </span>
+                              <span className="text-[9px] text-slate-400">
+                                ជ្រើសរើសរូបពីម៉ាស៊ីន (JPG/PNG)
+                              </span>
+                            </div>
+                          </button>
+                        </div>
+                      )}
+
+                      <input
+                        ref={thumbnailInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleThumbnailFileChange}
+                        className="hidden"
+                      />
+                    </div>
                   </div>
                 ) : (
                   <div
@@ -1235,11 +1454,11 @@ export default function VideoPublisherTab({
                 disabled={isGeneratingAi || selectedPageIds.length === 0}
                 className="py-3 px-4 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500 hover:from-purple-500 hover:to-cyan-400 text-white font-bold text-xs shadow-lg shadow-purple-600/30 flex items-center justify-center gap-2 transition disabled:opacity-50"
               >
-                <Sparkles className={`h-4 w-4 ${isGeneratingAi ? "animate-spin" : ""}`} />
+                <Sparkles className={`h-4 w-4 ${isGeneratingAi ? "animate-spin text-amber-300" : ""}`} />
                 <span>
                   {isGeneratingAi
-                    ? "AI កំពុងកែច្នៃ Caption តាមគំរូ..."
-                    : `🪄 AI កែច្នៃតាម Page នីមួយៗ (${selectedPageIds.length} Pages)`}
+                    ? "AI កំពុងមើលវីដេអូ & សរសេរ Caption..."
+                    : `🪄 AI ពិនិត្យវីដេអូ & សរសេរតាម Page (${selectedPageIds.length} Pages)`}
                 </span>
               </button>
             </div>
