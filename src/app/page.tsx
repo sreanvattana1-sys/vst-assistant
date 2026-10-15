@@ -4363,7 +4363,11 @@ export default function VSTAssistantApp() {
 
           {/* TAB: VIDEO & REELS PUBLISHER */}
           {activeTab === "video_publisher" && (
-            <VideoPublisherTab lang={lang} connectedPages={COMPANY_PAGES} />
+            <VideoPublisherTab
+              lang={lang}
+              connectedPages={managedPages}
+              currentUser={currentUser}
+            />
           )}
         </div>
       </main>

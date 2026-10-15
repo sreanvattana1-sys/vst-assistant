@@ -318,6 +318,38 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, tokens: tokenMap });
     }
 
+    if (searchParams.get("action") === "pages") {
+      const { data: memberData } = await supabase
+        .from("bot_settings")
+        .select("dm_template")
+        .eq("id", "vst_members")
+        .maybeSingle();
+
+      const members = memberData?.dm_template ? JSON.parse(memberData.dm_template) : [];
+      const pagesList: any[] = [];
+      const tokenMap = await getPageTokensMap();
+
+      for (const m of members) {
+        for (const p of m.pages || []) {
+          if (p.id && !pagesList.some((existing) => existing.id === p.id)) {
+            pagesList.push({
+              id: p.id,
+              name: p.name,
+              category: p.category || "Facebook Page",
+              memberName: m.name,
+              role: m.role,
+              hasToken: !!tokenMap[p.id],
+            });
+          }
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        pages: pagesList,
+      });
+    }
+
     if (searchParams.get("action") === "get_upload_url") {
       const fileName = searchParams.get("fileName") || `upload_${Date.now()}`;
       const ext = fileName.split(".").pop() || "bin";

@@ -138,15 +138,25 @@ Emmi ជំនួយការពិសេសសម្រាប់សុខភា
 
 interface VideoPublisherTabProps {
   lang: "km" | "en";
-  connectedPages: { id: string; name: string; category?: string }[];
+  connectedPages?: { id: string; name: string; category?: string; memberName?: string }[];
+  currentUser?: { name?: string; role?: string; id?: string };
 }
 
 export default function VideoPublisherTab({
   lang,
-  connectedPages: propsPages,
+  connectedPages: propsPages = [],
+  currentUser,
 }: VideoPublisherTabProps) {
-  // Use official 8 pages pre-configured
-  const allTargetPages = OFFICIAL_COMPANY_PAGES;
+  // Dynamic Target Pages: Loaded live from API (all members' pages) + props
+  const [allTargetPages, setAllTargetPages] = useState<{
+    id: string;
+    name: string;
+    category?: string;
+    memberName?: string;
+    hasToken?: boolean;
+  }[]>(OFFICIAL_COMPANY_PAGES);
+
+  const [selectedMemberFilter, setSelectedMemberFilter] = useState<string>("all");
 
   // Media Type State: "video" (default) | "photo" | "text"
   const [mediaType, setMediaType] = useState<"video" | "photo" | "text">("video");
@@ -168,10 +178,55 @@ export default function VideoPublisherTab({
   // Master Caption Template (Golden copy state)
   const [masterCaption, setMasterCaption] = useState<string>(GOLDEN_PRESETS[0].text);
 
-  // Selected Pages State (default: ALL 8 PAGES PRE-SELECTED)
+  // Selected Pages State
   const [selectedPageIds, setSelectedPageIds] = useState<string[]>(
-    allTargetPages.map((p) => p.id)
+    OFFICIAL_COMPANY_PAGES.map((p) => p.id)
   );
+
+  // Load all live connected pages from Supabase (Includes Sam Moto, Reamm Sunset, etc.)
+  useEffect(() => {
+    let isMounted = true;
+    const fetchLivePublisherPages = async () => {
+      try {
+        const res = await fetch("/api/video-publisher?action=pages");
+        if (res.ok) {
+          const json = await res.json();
+          if (json.pages && Array.isArray(json.pages) && json.pages.length > 0) {
+            if (!isMounted) return;
+            setAllTargetPages(json.pages);
+
+            // If a specific member is logged in, select only their pages by default
+            if (currentUser?.name && currentUser.name !== "VST Super Admin") {
+              const myPages = json.pages.filter(
+                (p: any) => p.memberName?.toLowerCase() === currentUser.name?.toLowerCase()
+              );
+              if (myPages.length > 0) {
+                setSelectedPageIds(myPages.map((p: any) => p.id));
+                setSelectedMemberFilter(currentUser.name);
+                return;
+              }
+            }
+
+            // Default for Super Admin: select all pages
+            setSelectedPageIds(json.pages.map((p: any) => p.id));
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn("Could not load dynamic pages for publisher:", err);
+      }
+
+      if (propsPages && propsPages.length > 0) {
+        setAllTargetPages(propsPages);
+        setSelectedPageIds(propsPages.map((p) => p.id));
+      }
+    };
+
+    fetchLivePublisherPages();
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser?.name, propsPages]);
 
   // Caption Strategy / Style Selector
   const [captionStyle, setCaptionStyle] = useState<
@@ -281,12 +336,23 @@ export default function VideoPublisherTab({
     }
   };
 
+  const memberNames = Array.from(
+    new Set(allTargetPages.map((p) => p.memberName).filter(Boolean))
+  ) as string[];
+
+  const displayedPages =
+    selectedMemberFilter === "all"
+      ? allTargetPages
+      : allTargetPages.filter((p) => p.memberName === selectedMemberFilter);
+
   const selectAllPages = () => {
-    setSelectedPageIds(allTargetPages.map((p) => p.id));
+    const displayedIds = displayedPages.map((p) => p.id);
+    setSelectedPageIds((prev) => Array.from(new Set([...prev, ...displayedIds])));
   };
 
   const deselectAllPages = () => {
-    setSelectedPageIds([]);
+    const displayedIds = displayedPages.map((p) => p.id);
+    setSelectedPageIds((prev) => prev.filter((id) => !displayedIds.includes(id)));
   };
 
   // Trigger Deep AI Caption Generation with Gemini 3.8 Flash
@@ -529,14 +595,14 @@ export default function VideoPublisherTab({
                 Multi-Page Video & Reels Publisher
               </h2>
               <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                ● ភ្ជាប់ 8 Pages រួចរាល់
+                ● ភ្ជាប់ {allTargetPages.length} Pages រួចរាល់
               </span>
               <span className="text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full">
                 AI Deep Thinking 🪄
               </span>
             </div>
             <p className="text-xs text-slate-400">
-              Upload វីដេអូតែ ១ ដង អាចផុសទៅកាន់ Page ទាំង ៨ ព្រមគ្នា ដោយ AI បង្កើត Caption ខុសៗគ្នាតាមប្រភេទ Page នីមួយៗ
+              Upload វីដេអូតែ ១ ដង អាចផុសទៅកាន់ Page ទាំងអស់ ({allTargetPages.length} Pages) ព្រមគ្នា ដោយ AI បង្កើត Caption ខុសៗគ្នាតាមប្រភេទ Page នីមួយៗ
             </p>
           </div>
         </div>
@@ -819,16 +885,16 @@ export default function VideoPublisherTab({
             )}
           </div>
 
-          {/* 2. Target Pages Selector Card (PRE-CONNECTED 8 PAGES) */}
+          {/* 2. Target Pages Selector Card (DYNAMIC MULTI-MEMBER PAGES) */}
           <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3.5 shadow-lg">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
                   <Layers className="h-4 w-4 text-purple-400" />
-                  <span>២. ភ្ជាប់ Pages ទាំង ៨ រួចរាល់</span>
+                  <span>២. ជ្រើសរើស Pages សម្រាប់ផុស ({allTargetPages.length} Pages ភ្ជាប់រួចរាល់)</span>
                 </h3>
                 <span className="text-[10px] text-emerald-400">
-                  ● បានភ្ជាប់ជាមួយ Access Token រួចជាស្រេច
+                  ● គាំទ្រទាំង Page របស់ក្រុមហ៊ុន និង Page សមាជិកទាំងអស់
                 </span>
               </div>
               <span className="text-[11px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2.5 py-0.5 rounded-full font-mono">
@@ -836,16 +902,63 @@ export default function VideoPublisherTab({
               </span>
             </div>
 
+            {/* Member Filter Pills */}
+            {memberNames.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-slate-800/60 border border-slate-700/60 text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedMemberFilter("all");
+                    setSelectedPageIds(allTargetPages.map((p) => p.id));
+                  }}
+                  className={`px-2.5 py-1 rounded-lg font-medium transition text-[11px] ${
+                    selectedMemberFilter === "all"
+                      ? "bg-purple-600 text-white shadow"
+                      : "text-slate-400 hover:text-white hover:bg-slate-700/50"
+                  }`}
+                >
+                  ទាំងអស់ ({allTargetPages.length})
+                </button>
+                {memberNames.map((mName) => {
+                  const mPagesCount = allTargetPages.filter((p) => p.memberName === mName).length;
+                  return (
+                    <button
+                      key={mName}
+                      type="button"
+                      onClick={() => {
+                        setSelectedMemberFilter(mName);
+                        setSelectedPageIds(
+                          allTargetPages.filter((p) => p.memberName === mName).map((p) => p.id)
+                        );
+                      }}
+                      className={`px-2.5 py-1 rounded-lg font-medium transition text-[11px] flex items-center gap-1 ${
+                        selectedMemberFilter === mName
+                          ? "bg-indigo-600 text-white shadow"
+                          : "text-slate-400 hover:text-white hover:bg-slate-700/50"
+                      }`}
+                    >
+                      <span>👤 {mName}</span>
+                      <span className="opacity-80">({mPagesCount})</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Shortcuts */}
             <div className="flex items-center justify-between text-[11px] text-slate-400 border-b border-slate-800 pb-2">
-              <span>ជ្រើសរើស Page ដែលត្រូវផុស៖</span>
+              <span>
+                {selectedMemberFilter === "all"
+                  ? `Page ទាំងអស់ (${displayedPages.length})`
+                  : `Page របស់ ${selectedMemberFilter} (${displayedPages.length})`}
+              </span>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={selectAllPages}
                   className="text-blue-400 hover:text-blue-300 font-semibold"
                 >
-                  រើសទាំងអស់ (៨)
+                  រើសទាំងអស់ ({displayedPages.length})
                 </button>
                 <span>•</span>
                 <button
@@ -858,9 +971,9 @@ export default function VideoPublisherTab({
               </div>
             </div>
 
-            {/* 8 Connected Pages List */}
-            <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-1">
-              {allTargetPages.map((page) => {
+            {/* Displayed Connected Pages List */}
+            <div className="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
+              {displayedPages.map((page) => {
                 const isSelected = selectedPageIds.includes(page.id);
                 return (
                   <div
@@ -885,12 +998,17 @@ export default function VideoPublisherTab({
                       <div className="truncate">
                         <div className="font-semibold truncate flex items-center gap-1.5">
                           <span>{page.name}</span>
+                          {page.memberName && (
+                            <span className="text-[9px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-1.5 py-0.5 rounded font-normal">
+                              👤 {page.memberName}
+                            </span>
+                          )}
                           <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded font-normal">
                             Online
                           </span>
                         </div>
                         <div className="text-[10px] text-slate-500 truncate">
-                          {page.description}
+                          ID: {page.id} {page.category ? `• ${page.category}` : ""}
                         </div>
                       </div>
                     </div>
