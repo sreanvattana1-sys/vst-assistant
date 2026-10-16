@@ -38,11 +38,13 @@ import {
   Brain,
   Megaphone,
   Film,
+  Layers,
 } from "lucide-react";
 import { translations, Language } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase";
 import AdsManagerTab from "@/components/AdsManagerTab";
 import VideoPublisherTab from "@/components/VideoPublisherTab";
+import StoryBatchPublisherTab from "@/components/StoryBatchPublisherTab";
 
 const COMPANY_PAGES = [
   { id: "955747057621489", name: "Kidney Pro ឃីដនី ប្រូ", category: "សុខភាព & សម្រស់ (Health/Beauty)" },
@@ -1812,6 +1814,7 @@ export default function VSTAssistantApp() {
               {[
                 { id: "bot", label: t.nav.botSettings, icon: Bot },
                 { id: "video_publisher", label: (t.nav as any).videoPublisher || "ផុស Video & Reels", icon: Film, badge: "Reels" },
+                { id: "story_publisher", label: lang === "km" ? "ផុស Story & Multi-Post" : "Story & Multi-Post", icon: Layers, badge: "Story" },
                 ...(isAdmin
                   ? [
                       { id: "ai_training", label: lang === "km" ? "បង្រៀន & ចំណេះដឹង AI" : "AI Training & Memory", icon: Brain, badge: "Hub" }
@@ -1956,6 +1959,8 @@ export default function VSTAssistantApp() {
                   ? "តាមដានការចំណាយ ថ្លៃឆាត CPR និងយុទ្ធនាការ Meta Ads"
                   : activeTab === "video_publisher"
                   ? "ផុស Video & Reels ម្ដងបានច្រើន Page ជាមួយ AI បង្កើត Caption"
+                  : activeTab === "story_publisher"
+                  ? "ផុស Facebook Story & Multi-Post ម្ដងបានច្រើនក្នុង Page តែមួយ"
                   : "ប្រព័ន្ធគ្រប់គ្រងស្វ័យប្រវត្តិកម្ម VST"}
               </p>
             </div>
@@ -4364,6 +4369,15 @@ export default function VSTAssistantApp() {
           {/* TAB: VIDEO & REELS PUBLISHER */}
           {activeTab === "video_publisher" && (
             <VideoPublisherTab
+              lang={lang}
+              connectedPages={managedPages}
+              currentUser={currentUser}
+            />
+          )}
+
+          {/* TAB: STORY & MULTI-POST PUBLISHER */}
+          {activeTab === "story_publisher" && (
+            <StoryBatchPublisherTab
               lang={lang}
               connectedPages={managedPages}
               currentUser={currentUser}
