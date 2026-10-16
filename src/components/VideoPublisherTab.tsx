@@ -27,6 +27,7 @@ import {
   Star,
   Award,
   Image as ImageIcon,
+  History,
 } from "lucide-react";
 import { VideoPostRecord } from "@/app/api/video-publisher/route";
 
@@ -289,6 +290,7 @@ export default function VideoPublisherTab({
   // History State
   const [history, setHistory] = useState<VideoPostRecord[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [showHistory, setShowHistory] = useState<boolean>(false);
 
   // Fetch publish history
   const fetchHistory = async () => {
@@ -1039,145 +1041,389 @@ export default function VideoPublisherTab({
   );
 
   return (
-    <div className="space-y-6">
-      {/* Top Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950/70 to-slate-900 border border-indigo-500/30 p-5 shadow-xl">
-        <div className="flex items-center gap-3">
-          <div className="p-3 rounded-2xl bg-gradient-to-tr from-pink-600 via-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-600/30">
-            <Film className="h-6 w-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-white">
-                Multi-Page Video & Reels Publisher
-              </h2>
-              <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                ● ភ្ជាប់ {allTargetPages.length} Pages រួចរាល់
-              </span>
-              <span className="text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full">
-                AI Deep Thinking 🪄
-              </span>
+    <div className="space-y-6 max-w-7xl mx-auto pb-16">
+      {/* HEADER BANNER */}
+      <div className="relative overflow-hidden rounded-3xl border border-indigo-500/30 bg-gradient-to-r from-[#0d1527] via-[#0b1324] to-[#0c162d] p-6 shadow-2xl backdrop-blur-xl">
+        <div className="absolute -right-16 -top-16 h-64 w-64 rounded-full bg-indigo-500/10 blur-3xl pointer-events-none" />
+        <div className="absolute -left-16 -bottom-16 h-64 w-64 rounded-full bg-purple-500/10 blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5">
+          <div className="space-y-1.5">
+            <div className="inline-flex items-center gap-2 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-xs font-bold text-indigo-400">
+              <Sparkles className="h-3.5 w-3.5 animate-pulse text-purple-400" />
+              <span>Facebook Video & Reels Multi-Page Syndication System</span>
             </div>
-            <p className="text-xs text-slate-400">
-              Upload វីដេអូតែ ១ ដង អាចផុសទៅកាន់ Page ទាំងអស់ ({allTargetPages.length} Pages) ព្រមគ្នា ដោយ AI បង្កើត Caption ខុសៗគ្នាតាមប្រភេទ Page នីមួយៗ
+            <h1 className="text-xl md:text-2xl font-black tracking-tight text-white flex items-center gap-2">
+              <span>Video & Reel Publisher</span>
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-gradient-to-r from-purple-500 to-indigo-600 text-white font-semibold">
+                Pro
+              </span>
+            </h1>
+            <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+              Upload វីដេអូ ឬរូបភាពតែ ១ ដង អាចផុសទៅកាន់ Page ទាំងអស់ ({allTargetPages.length} Pages) ព្រមគ្នា ដោយមានប្រព័ន្ធ AI Vision ពិនិត្យសាច់វីដេអូជាក់ស្តែង និងបង្កើត Caption ប្លែកៗគ្នាទៅតាមប្រភេទ Page នីមួយៗដោយស្វ័យប្រវត្តិ។
             </p>
           </div>
-        </div>
 
-        {/* Media Type & Reels Selector */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Media Type Selector */}
-          <div className="flex items-center bg-slate-800/90 border border-slate-700 rounded-xl p-1 text-xs">
+          <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => setMediaType("video")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition ${
-                mediaType === "video"
-                  ? "bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-sm"
-                  : "text-slate-400 hover:text-white"
-              }`}
+              onClick={() => setShowHistory(!showHistory)}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-700 px-4 py-2.5 text-xs font-semibold text-slate-200 transition shadow-sm"
             >
-              <Video className="h-3.5 w-3.5" />
-              <span>🎬 វីដេអូ</span>
+              <History className="h-4 w-4 text-indigo-400" />
+              <span>{showHistory ? "លាក់ប្រវត្តិ" : "មើលប្រវត្តិផុស"}</span>
+              <span className="rounded-full bg-slate-700 px-1.5 py-0.2 text-[10px] text-indigo-300">
+                {history.length}
+              </span>
             </button>
+          </div>
+        </div>
+      </div>
+
+      {/* HISTORY DRAWER / VIEW */}
+      {showHistory && (
+        <div className="rounded-2xl border border-indigo-500/20 bg-slate-900/90 p-5 shadow-xl backdrop-blur-md">
+          <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-3">
+            <h3 className="text-xs font-bold text-white flex items-center gap-2">
+              <History className="h-4 w-4 text-indigo-400" />
+              <span>ប្រវត្តិការផុស Video & Reels ថ្មីៗ</span>
+            </h3>
             <button
-              type="button"
-              onClick={() => setMediaType("photo")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition ${
-                mediaType === "photo"
-                  ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-sm"
-                  : "text-slate-400 hover:text-white"
-              }`}
+              onClick={() => setShowHistory(false)}
+              className="text-xs text-slate-400 hover:text-white"
             >
-              <ImageIcon className="h-3.5 w-3.5" />
-              <span>🖼️ រូបភាព</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setMediaType("text")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition ${
-                mediaType === "text"
-                  ? "bg-emerald-600 text-white shadow-sm"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              <FileText className="h-3.5 w-3.5" />
-              <span>📝 អត្ថបទ</span>
+              ✕ បិទ
             </button>
           </div>
 
-          {/* Sub-selector for Video: Reels vs Video */}
-          {mediaType === "video" && (
-            <div className="flex items-center bg-slate-800/90 border border-slate-700 rounded-xl p-1 text-xs">
-              <button
-                type="button"
-                onClick={() => setPostType("reels")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition ${
-                  postType === "reels"
-                    ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-sm"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                <span>🎥 Reels</span>
-                <span className="text-[9px] bg-white/20 text-white px-1 py-0.2 rounded font-normal">
-                  Viral
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setPostType("video")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition ${
-                  postType === "video"
-                    ? "bg-indigo-600 text-white shadow-sm font-bold"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                <span>📹 Video ធម្មតា</span>
-              </button>
+          {history.length === 0 ? (
+            <p className="text-xs text-slate-400 py-4 text-center">
+              មិនទាន់មានប្រវត្តិផុសនៅឡើយទេ
+            </p>
+          ) : (
+            <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+              {history.map((rec) => (
+                <div
+                  key={rec.id}
+                  className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs hover:border-slate-700"
+                >
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-white">{rec.title}</span>
+                      <span
+                        className="px-2 py-0.2 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
+                      >
+                        {rec.postType === "reels" ? "🎥 Reels" : rec.mediaType === "photo" ? "🖼️ Photo" : "📹 Video"}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-400">
+                      {new Date(rec.publishedAt).toLocaleString("km-KH")} • ចំនួន Pages:{" "}
+                      <span className="text-emerald-400 font-bold">
+                        {rec.targetPagesCount} Pages
+                      </span>
+                    </div>
+                  </div>
+
+                  <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Check className="h-3 w-3" />
+                    <span>ជោគជ័យ</span>
+                  </span>
+                </div>
+              ))}
             </div>
           )}
         </div>
-      </div>
+      )}
 
-      {/* Facebook Permissions & Re-Auth Alert Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-gradient-to-r from-indigo-950/70 via-slate-900 to-indigo-950/70 border border-indigo-500/30 text-xs shadow-md">
-        <div className="flex items-center gap-2.5 text-slate-300">
-          <div className="p-1.5 rounded-xl bg-indigo-500/20 text-indigo-400">
-            <AlertCircle className="h-4 w-4" />
+      {/* WORKSPACE: 3-COLUMN GRID */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* LEFT COLUMN: TARGET PAGES, FORMAT & SETTINGS */}
+        <div className="space-y-5">
+          {/* 1. Target Page Selector (Multi-select with Member filter & Select All) */}
+          <div className="rounded-2xl border border-slate-800 bg-[#0B1220] p-5 shadow-lg space-y-3.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="text-xs font-bold text-white flex items-center gap-2">
+                  <span>១. ជ្រើសរើស Facebook Pages ({allTargetPages.length} Pages)</span>
+                  <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+                </label>
+                <span className="text-[10px] text-cyan-400">
+                  ● អាចជ្រើសរើសច្រើន Page តាមចិត្តក្នុងពេលតែមួយ
+                </span>
+              </div>
+              <span className="text-[11px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-2.5 py-0.5 rounded-full font-mono">
+                {selectedPageIds.length}/{allTargetPages.length} Pages
+              </span>
+            </div>
+
+            {/* Member Filter Pills */}
+            {memberNames.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-slate-900/80 border border-slate-800 text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedMemberFilter("all");
+                    setSelectedPageIds(allTargetPages.map((p) => p.id));
+                  }}
+                  className={`px-2.5 py-1 rounded-lg font-medium transition text-[11px] ${
+                    selectedMemberFilter === "all"
+                      ? "bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-bold shadow"
+                      : "text-slate-400 hover:text-white hover:bg-slate-800"
+                  }`}
+                >
+                  ទាំងអស់ ({allTargetPages.length})
+                </button>
+                {memberNames.map((mName) => {
+                  const mPagesCount = allTargetPages.filter(
+                    (p) => p.memberName === mName
+                  ).length;
+                  return (
+                    <button
+                      key={mName}
+                      type="button"
+                      onClick={() => {
+                        setSelectedMemberFilter(mName);
+                        setSelectedPageIds(
+                          allTargetPages
+                            .filter((p) => p.memberName === mName)
+                            .map((p) => p.id)
+                        );
+                      }}
+                      className={`px-2.5 py-1 rounded-lg font-medium transition text-[11px] flex items-center gap-1 ${
+                        selectedMemberFilter === mName
+                          ? "bg-cyan-600 text-white font-bold shadow"
+                          : "text-slate-400 hover:text-white hover:bg-slate-800"
+                      }`}
+                    >
+                      <span>👤 {mName}</span>
+                      <span className="opacity-80">({mPagesCount})</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Shortcuts: Select All / Deselect All */}
+            <div className="flex items-center justify-between text-[11px] text-slate-400 border-b border-slate-800 pb-2">
+              <span>
+                {selectedMemberFilter === "all"
+                  ? `Page ទាំងអស់ (${displayedPages.length})`
+                  : `Page របស់ ${selectedMemberFilter} (${displayedPages.length})`}
+              </span>
+              <div className="flex items-center gap-2 font-semibold">
+                <button
+                  type="button"
+                  onClick={selectAllPages}
+                  className="text-cyan-400 hover:text-cyan-300 hover:underline"
+                >
+                  ✓ ជ្រើសទាំងអស់
+                </button>
+                <span>•</span>
+                <button
+                  type="button"
+                  onClick={deselectAllPages}
+                  className="text-slate-500 hover:text-slate-400 hover:underline"
+                >
+                  ដោះទាំងអស់
+                </button>
+              </div>
+            </div>
+
+            {/* Pages Checkbox List */}
+            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              {displayedPages.map((p) => {
+                const isSelected = selectedPageIds.includes(p.id);
+                const owner = p.memberName;
+                return (
+                  <div
+                    key={p.id}
+                    onClick={() => togglePageSelect(p.id)}
+                    className={`flex items-center justify-between rounded-xl p-3 text-xs transition border cursor-pointer select-none ${
+                      isSelected
+                        ? "border-cyan-400/80 bg-gradient-to-r from-cyan-950/50 to-blue-950/40 text-white font-medium shadow-md shadow-cyan-950/20"
+                        : "border-slate-800/80 bg-slate-900/50 text-slate-400 hover:border-slate-700 hover:bg-slate-800/40"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 text-left truncate flex-1 mr-2">
+                      <div className="h-7 w-7 rounded-lg bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center font-bold text-white text-[11px] shrink-0">
+                        {p.name.charAt(0)}
+                      </div>
+                      <div className="truncate">
+                        <div className="truncate flex items-center gap-1.5">
+                          <span className={isSelected ? "text-white font-bold" : "text-slate-300"}>
+                            {p.name}
+                          </span>
+                          {owner && (
+                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-cyan-300 border border-slate-700">
+                              {owner}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-normal truncate">
+                          {p.category || "Facebook Page"}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => {}}
+                        className="h-4 w-4 rounded border-slate-700 bg-slate-800 text-cyan-500 focus:ring-0 cursor-pointer pointer-events-none"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {selectedPageIds.length > 0 && (
+              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-2.5 text-[11px] text-emerald-300 flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
+                <span>
+                  បានជ្រើសរើស <b>{selectedPageIds.length} Pages</b> (រួចរាល់សម្រាប់ការផុស)
+                </span>
+              </div>
+            )}
           </div>
-          <div>
-            <span className="font-bold text-white">សិទ្ធិផុសលើ Facebook (Post Permissions)៖</span>{" "}
-            <span className="text-slate-400">
-              ប្រព័ន្ធបានភ្ជាប់ជាមួយ Page Access Token ផ្លូវការដែលមានសិទ្ធិ{" "}
-              <code className="text-emerald-400 font-mono text-[11px] bg-slate-800 px-1 py-0.5 rounded">
+
+          {/* 2. Format & Post Type Card */}
+          <div className="rounded-2xl border border-slate-800 bg-[#0B1220] p-5 shadow-lg space-y-3.5">
+            <label className="text-xs font-bold text-white flex items-center gap-2">
+              <Layers className="h-4 w-4 text-cyan-400" />
+              <span>២. ប្រភេទការផុស (Format & Post Type)</span>
+            </label>
+
+            <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-slate-900/80 border border-slate-800 text-xs">
+              <button
+                type="button"
+                onClick={() => setMediaType("video")}
+                className={`py-2 px-1 rounded-lg font-bold transition flex items-center justify-center gap-1.5 text-xs ${
+                  mediaType === "video"
+                    ? "bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow"
+                    : "text-slate-400 hover:text-white hover:bg-slate-800"
+                }`}
+              >
+                <Video className="h-3.5 w-3.5" />
+                <span>🎬 វីដេអូ</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setMediaType("photo")}
+                className={`py-2 px-1 rounded-lg font-bold transition flex items-center justify-center gap-1.5 text-xs ${
+                  mediaType === "photo"
+                    ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow"
+                    : "text-slate-400 hover:text-white hover:bg-slate-800"
+                }`}
+              >
+                <ImageIcon className="h-3.5 w-3.5" />
+                <span>🖼️ រូបភាព</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setMediaType("text")}
+                className={`py-2 px-1 rounded-lg font-bold transition flex items-center justify-center gap-1.5 text-xs ${
+                  mediaType === "text"
+                    ? "bg-emerald-600 text-white shadow font-bold"
+                    : "text-slate-400 hover:text-white hover:bg-slate-800"
+                }`}
+              >
+                <FileText className="h-3.5 w-3.5" />
+                <span>📝 អត្ថបទ</span>
+              </button>
+            </div>
+
+            {/* Sub-selector for Video: Reels vs Normal Video */}
+            {mediaType === "video" && (
+              <div className="space-y-1.5 pt-1">
+                <span className="text-[11px] font-semibold text-slate-400 block">
+                  ទម្រង់វីដេអូលើ Facebook:
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPostType("reels")}
+                    className={`p-2.5 rounded-xl border text-left transition flex items-center justify-between ${
+                      postType === "reels"
+                        ? "border-purple-500 bg-purple-950/40 text-white shadow-md shadow-purple-950/20"
+                        : "border-slate-800 bg-slate-900/60 text-slate-400 hover:text-white hover:border-slate-700"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Film className="h-4 w-4 text-purple-400" />
+                      <div className="text-xs">
+                        <span className="font-bold block text-white">Facebook Reels</span>
+                        <span className="text-[10px] text-purple-300">Viral ខ្ពស់</span>
+                      </div>
+                    </div>
+                    {postType === "reels" && (
+                      <span className="h-2 w-2 rounded-full bg-purple-400" />
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPostType("video")}
+                    className={`p-2.5 rounded-xl border text-left transition flex items-center justify-between ${
+                      postType === "video"
+                        ? "border-indigo-500 bg-indigo-950/40 text-white shadow-md shadow-indigo-950/20"
+                        : "border-slate-800 bg-slate-900/60 text-slate-400 hover:text-white hover:border-slate-700"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Video className="h-4 w-4 text-indigo-400" />
+                      <div className="text-xs">
+                        <span className="font-bold block text-white">Video ធម្មតា</span>
+                        <span className="text-[10px] text-slate-400">ចូល Feed ផេក</span>
+                      </div>
+                    </div>
+                    {postType === "video" && (
+                      <span className="h-2 w-2 rounded-full bg-indigo-400" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 3. Facebook Permissions & Re-Auth Card */}
+          <div className="rounded-2xl border border-slate-800 bg-[#0B1220] p-4 space-y-3 shadow-lg text-xs">
+            <div className="flex items-center gap-2 text-slate-300 font-bold">
+              <AlertCircle className="h-4 w-4 text-cyan-400" />
+              <span className="text-white">សិទ្ធិផុសលើ Facebook</span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              ប្រព័ន្ធបានភ្ជាប់ជាមួយ Page Token ដែលមានសិទ្ធិ{" "}
+              <code className="text-cyan-400 font-mono text-[10px] bg-slate-900 px-1 py-0.5 rounded border border-slate-800">
                 pages_manage_posts
               </code>{" "}
-              រួចរាល់ អាចផុសវីដេអូ រូបភាព និងអត្ថបទបាន ១០០%
-            </span>
+              រួចរាល់ អាចផុសវីដេអូ រូបភាព និង Reels បាន ១០០%។
+            </p>
+            <button
+              type="button"
+              onClick={triggerFacebookReauth}
+              disabled={isReauthorizing}
+              className="w-full py-2 px-3 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-slate-200 hover:text-white font-semibold text-[11px] flex items-center justify-center gap-2 transition"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 text-cyan-400 ${isReauthorizing ? "animate-spin" : ""}`} />
+              <span>{isReauthorizing ? "កំពុងភ្ជាប់..." : "🔑 ភ្ជាប់សិទ្ធិ Facebook ឡើងវិញ"}</span>
+            </button>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={triggerFacebookReauth}
-          disabled={isReauthorizing}
-          className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 transition shrink-0"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${isReauthorizing ? "animate-spin" : ""}`} />
-          <span>{isReauthorizing ? "កំពុងភ្ជាប់..." : "🔑 ភ្ជាប់សិទ្ធិ Facebook ឡើងវិញ (Re-authorize)"}</span>
-        </button>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* LEFT COLUMN: Media Source & 8 Pre-Connected Pages (5 Cols) */}
-        <div className="lg:col-span-5 space-y-5">
-          {/* 1. Media Source Card */}
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3.5 shadow-lg">
+        {/* RIGHT COLUMN: MEDIA UPLOADER, CAPTION STRATEGY & PUBLISHER (2 of 3 Cols) */}
+        <div className="lg:col-span-2 space-y-5">
+          {/* 3. Media Source Card */}
+          <div className="rounded-2xl border border-slate-800 bg-[#0B1220] p-5 space-y-4 shadow-lg">
             <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
               {mediaType === "video" && <Video className="h-4 w-4 text-blue-400" />}
               {mediaType === "photo" && <ImageIcon className="h-4 w-4 text-emerald-400" />}
               {mediaType === "text" && <FileText className="h-4 w-4 text-purple-400" />}
               <span>
-                ១. {mediaType === "video" ? "ជ្រើសរើសវីដេអូ (Video Source)" : mediaType === "photo" ? "ជ្រើសរើសរូបភាព (Photo Source)" : "ការផុសអត្ថបទសុទ្ធ (Text Post)"}
+                ៣. {mediaType === "video" ? "Upload វីដេអូ & រូប Thumbnail (Media Source)" : mediaType === "photo" ? "Upload រូបភាព (Photo Source)" : "ការផុសអត្ថបទសុទ្ធ (Text Post)"}
               </span>
             </h3>
 
@@ -1529,143 +1775,7 @@ export default function VideoPublisherTab({
             )}
           </div>
 
-          {/* 2. Target Pages Selector Card (DYNAMIC MULTI-MEMBER PAGES) */}
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3.5 shadow-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                  <Layers className="h-4 w-4 text-purple-400" />
-                  <span>២. ជ្រើសរើស Pages សម្រាប់ផុស ({allTargetPages.length} Pages ភ្ជាប់រួចរាល់)</span>
-                </h3>
-                <span className="text-[10px] text-emerald-400">
-                  ● គាំទ្រទាំង Page របស់ក្រុមហ៊ុន និង Page សមាជិកទាំងអស់
-                </span>
-              </div>
-              <span className="text-[11px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2.5 py-0.5 rounded-full font-mono">
-                {selectedPageIds.length}/{allTargetPages.length} Pages
-              </span>
-            </div>
-
-            {/* Member Filter Pills */}
-            {memberNames.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-slate-800/60 border border-slate-700/60 text-xs">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedMemberFilter("all");
-                    setSelectedPageIds(allTargetPages.map((p) => p.id));
-                  }}
-                  className={`px-2.5 py-1 rounded-lg font-medium transition text-[11px] ${
-                    selectedMemberFilter === "all"
-                      ? "bg-purple-600 text-white shadow"
-                      : "text-slate-400 hover:text-white hover:bg-slate-700/50"
-                  }`}
-                >
-                  ទាំងអស់ ({allTargetPages.length})
-                </button>
-                {memberNames.map((mName) => {
-                  const mPagesCount = allTargetPages.filter((p) => p.memberName === mName).length;
-                  return (
-                    <button
-                      key={mName}
-                      type="button"
-                      onClick={() => {
-                        setSelectedMemberFilter(mName);
-                        setSelectedPageIds(
-                          allTargetPages.filter((p) => p.memberName === mName).map((p) => p.id)
-                        );
-                      }}
-                      className={`px-2.5 py-1 rounded-lg font-medium transition text-[11px] flex items-center gap-1 ${
-                        selectedMemberFilter === mName
-                          ? "bg-indigo-600 text-white shadow"
-                          : "text-slate-400 hover:text-white hover:bg-slate-700/50"
-                      }`}
-                    >
-                      <span>👤 {mName}</span>
-                      <span className="opacity-80">({mPagesCount})</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Shortcuts */}
-            <div className="flex items-center justify-between text-[11px] text-slate-400 border-b border-slate-800 pb-2">
-              <span>
-                {selectedMemberFilter === "all"
-                  ? `Page ទាំងអស់ (${displayedPages.length})`
-                  : `Page របស់ ${selectedMemberFilter} (${displayedPages.length})`}
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={selectAllPages}
-                  className="text-blue-400 hover:text-blue-300 font-semibold"
-                >
-                  រើសទាំងអស់ ({displayedPages.length})
-                </button>
-                <span>•</span>
-                <button
-                  type="button"
-                  onClick={deselectAllPages}
-                  className="text-slate-400 hover:text-white"
-                >
-                  ដកចេញទាំងអស់
-                </button>
-              </div>
-            </div>
-
-            {/* Displayed Connected Pages List */}
-            <div className="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
-              {displayedPages.map((page) => {
-                const isSelected = selectedPageIds.includes(page.id);
-                return (
-                  <div
-                    key={page.id}
-                    onClick={() => togglePageSelect(page.id)}
-                    className={`flex items-center justify-between p-2.5 rounded-xl border text-xs cursor-pointer transition ${
-                      isSelected
-                        ? "bg-purple-950/40 border-purple-500/50 text-white"
-                        : "bg-slate-800/40 border-slate-800 text-slate-400 hover:border-slate-700"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5 truncate">
-                      <div
-                        className={`w-4 h-4 rounded flex items-center justify-center border transition ${
-                          isSelected
-                            ? "bg-purple-600 border-purple-500 text-white"
-                            : "border-slate-600 bg-slate-900"
-                        }`}
-                      >
-                        {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
-                      </div>
-                      <div className="truncate">
-                        <div className="font-semibold truncate flex items-center gap-1.5">
-                          <span>{page.name}</span>
-                          {page.memberName && (
-                            <span className="text-[9px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-1.5 py-0.5 rounded font-normal">
-                              👤 {page.memberName}
-                            </span>
-                          )}
-                          <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded font-normal">
-                            Online
-                          </span>
-                        </div>
-                        <div className="text-[10px] text-slate-500 truncate">
-                          ID: {page.id} {page.category ? `• ${page.category}` : ""}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* RIGHT COLUMN: CAPTION STRATEGY SELECTOR & AI DEEP GENERATOR (7 Cols) */}
-        <div className="lg:col-span-7 space-y-5">
-          {/* AI Generator Control Box */}
+          {/* 4. CAPTION STRATEGY SELECTOR & AI DEEP GENERATOR */}
           <div className="rounded-2xl border border-indigo-500/40 bg-gradient-to-b from-indigo-950/30 to-slate-900 p-5 space-y-4 shadow-xl">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -1674,10 +1784,10 @@ export default function VideoPublisherTab({
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-white">
-                    ៣. ជ្រើសរើសប្រភេទ Caption & AI បង្កើតដោយស្វ័យប្រវត្ត
+                    ៤. យុទ្ធសាស្ត្រ Caption & AI Deep Generator
                   </h3>
                   <p className="text-[11px] text-slate-400">
-                    ជ្រើសរើសយុទ្ធសាស្ត្រលក់ AI នឹងគិត និងសរសេរ Caption ៨ ទម្រង់ប្លែកៗគ្នាសម្រាប់ Page នីមួយៗ
+                    ជ្រើសរើសយុទ្ធសាស្ត្រលក់ AI នឹងគិត និងសរសេរ Caption ប្លែកៗគ្នាទៅតាម Page នីមួយៗ
                   </p>
                 </div>
               </div>

@@ -90,9 +90,37 @@ export default function StoryBatchPublisherTab({
   connectedPages = [],
   currentUser,
 }: StoryBatchPublisherTabProps) {
-  // 1. Pages state
+  // 1. Pages state (Supports selecting multiple pages freely)
   const [pagesList, setPagesList] = useState<ConnectedPage[]>(connectedPages);
-  const [selectedPageId, setSelectedPageId] = useState<string>("");
+  const [selectedPageIds, setSelectedPageIds] = useState<string[]>([]);
+  const [selectedMemberFilter, setSelectedMemberFilter] = useState<string>("all");
+
+  const memberNames = Array.from(
+    new Set(pagesList.map((p) => p.ownerName || (p as any).memberName).filter(Boolean))
+  ) as string[];
+
+  const displayedPages =
+    selectedMemberFilter === "all"
+      ? pagesList
+      : pagesList.filter(
+          (p) => (p.ownerName || (p as any).memberName) === selectedMemberFilter
+        );
+
+  const togglePageSelect = (id: string) => {
+    setSelectedPageIds((prev) =>
+      prev.includes(id) ? prev.filter((pId) => pId !== id) : [...prev, id]
+    );
+  };
+
+  const selectAllDisplayed = () => {
+    const displayedIds = displayedPages.map((p) => p.id);
+    setSelectedPageIds((prev) => Array.from(new Set([...prev, ...displayedIds])));
+  };
+
+  const deselectAllDisplayed = () => {
+    const displayedIds = displayedPages.map((p) => p.id);
+    setSelectedPageIds((prev) => prev.filter((id) => !displayedIds.includes(id)));
+  };
 
   // 2. Publish Destination & Delay Configuration
   const [publishDestination, setPublishDestination] = useState<"story" | "feed">("story");
@@ -131,17 +159,18 @@ export default function StoryBatchPublisherTab({
             if (!isMounted) return;
             setPagesList(data.pages);
 
-            // Auto-select user's first page or default
+            // Auto-select user's pages or all
             if (currentUser?.name && currentUser.name !== "VST Super Admin") {
-              const myPage = data.pages.find(
-                (p: any) => p.memberName?.toLowerCase() === currentUser.name?.toLowerCase()
+              const myPages = data.pages.filter(
+                (p: any) => (p.memberName || p.ownerName)?.toLowerCase() === currentUser.name?.toLowerCase()
               );
-              if (myPage) {
-                setSelectedPageId(myPage.id);
+              if (myPages.length > 0) {
+                setSelectedPageIds(myPages.map((p: any) => p.id));
+                setSelectedMemberFilter(currentUser.name);
                 return;
               }
             }
-            setSelectedPageId(data.pages[0].id);
+            setSelectedPageIds(data.pages.map((p: any) => p.id));
           }
         }
       } catch (err) {
@@ -226,12 +255,12 @@ export default function StoryBatchPublisherTab({
 
   // Trigger Gemini AI Caption Generation for all items in batch
   const handleGenerateAiCaptions = async () => {
-    if (batchItems.length === 0) return;
+    if (batchItems.length === 0 || selectedPageIds.length === 0) return;
     setIsGeneratingAiCaptions(true);
 
     try {
-      const targetPage = pagesList.find((p) => p.id === selectedPageId);
-      const pageName = targetPage?.name || "Our Page";
+      const firstPage = pagesList.find((p) => p.id === selectedPageIds[0]);
+      const pageName = firstPage?.name || "Our Page";
 
       // Call AI Caption Generator
       const res = await fetch("/api/video-publisher", {
@@ -243,13 +272,13 @@ export default function StoryBatchPublisherTab({
           videoContent: masterStoryTheme || "ប្រូម៉ូសិនពិសេស និងចំណេះដឹងសុខភាព",
           baseTopic: masterStoryTheme || "សុខភាព និងទំនុកចិត្ត",
           captionStyle: "promotion",
-          pages: [{ id: selectedPageId, name: pageName }],
+          pages: [{ id: selectedPageIds[0], name: pageName }],
         }),
       });
 
       if (res.ok) {
         const data = await res.json();
-        const baseCaption = data.captions?.[selectedPageId];
+        const baseCaption = data.captions?.[selectedPageIds[0]];
         if (baseCaption) {
           setBatchItems((prev) =>
             prev.map((item, idx) => {
@@ -269,10 +298,10 @@ export default function StoryBatchPublisherTab({
     }
   };
 
-  // Execute Batch / Story Publishing
+  // Execute Batch / Story Publishing across all selected pages
   const handlePublishBatch = async () => {
-    if (!selectedPageId) {
-      alert("សូមជ្រើសរើស Page ដែលត្រូវផុសជាមុនសិន!");
+    if (selectedPageIds.length === 0) {
+      alert("សូមជ្រើសរើស Page យ៉ាងហោចណាស់ ១ សម្រាប់ផុស!");
       return;
     }
 
@@ -281,85 +310,105 @@ export default function StoryBatchPublisherTab({
       return;
     }
 
-    const targetPage = pagesList.find((p) => p.id === selectedPageId);
-    if (!targetPage) {
-      alert("រកមិនឃើញព័ត៌មាន Page ដែលបានជ្រើសរើសទេ");
-      return;
-    }
-
     setIsPublishing(true);
-    const total = batchItems.length;
-    let completedCount = 0;
-    const historyItemResults: any[] = [];
+    const totalPages = selectedPageIds.length;
+    const totalItems = batchItems.length;
+    const grandTotalSteps = totalPages * totalItems;
+    let overallStep = 0;
 
     setPublishProgress({
       current: 0,
-      total,
+      total: grandTotalSteps,
       percent: 0,
-      statusText: `កំពុងរៀបចំផុស ${total} ឯកសារទៅកាន់ [${targetPage.name}]...`,
+      statusText: `កំពុងរៀបចំផុសទៅកាន់ ${totalPages} Pages (សរុប ${totalItems} ឯកសារក្នុងមួយ Page)...`,
     });
 
-    for (let i = 0; i < batchItems.length; i++) {
-      const item = batchItems[i];
+    for (let pIdx = 0; pIdx < selectedPageIds.length; pIdx++) {
+      const pId = selectedPageIds[pIdx];
+      const targetPage = pagesList.find((p) => p.id === pId);
+      if (!targetPage) continue;
 
-      // Update item status to uploading
-      setBatchItems((prev) =>
-        prev.map((it) => (it.id === item.id ? { ...it, status: "uploading" } : it))
-      );
+      let completedCount = 0;
+      const historyItemResults: any[] = [];
 
-      setPublishProgress({
-        current: i + 1,
-        total,
-        percent: Math.round(((i + 0.1) / total) * 100),
-        statusText: `កំពុង Upload ${publishDestination === "story" ? "Story" : "Post"} ទី ${i + 1}/${total} (${item.mediaType === "video" ? "វីដេអូ" : "រូបភាព"})...`,
-      });
+      for (let i = 0; i < batchItems.length; i++) {
+        const item = batchItems[i];
+        overallStep++;
 
-      try {
-        const formData = new FormData();
-        formData.append("pageId", selectedPageId);
-        formData.append("file", item.file, item.file.name);
-        formData.append("mediaType", item.mediaType);
-        formData.append("caption", item.caption || "");
-        formData.append("title", item.title || "");
-
-        if (publishDestination === "story") {
-          formData.append(
-            "action",
-            item.mediaType === "video" ? "publish_video_story" : "publish_photo_story"
-          );
-        } else {
-          formData.append("action", "publish_feed");
-        }
-
-        const res = await fetch("/api/story-publisher", {
-          method: "POST",
-          body: formData,
+        setPublishProgress({
+          current: overallStep,
+          total: grandTotalSteps,
+          percent: Math.round(((overallStep - 0.5) / grandTotalSteps) * 100),
+          statusText: `[Page ${pIdx + 1}/${totalPages}: ${targetPage.name}] កំពុង Upload ${publishDestination === "story" ? "Story Slide" : "Post"} ទី ${i + 1}/${totalItems}...`,
         });
 
-        const data = await res.json();
+        // Update item status on current item
+        setBatchItems((prev) =>
+          prev.map((it) => (it.id === item.id ? { ...it, status: "uploading" } : it))
+        );
 
-        if (res.ok && (data.success || data.postId)) {
-          completedCount++;
-          const finalPostId = data.postId || data.id;
+        try {
+          const formData = new FormData();
+          formData.append("pageId", pId);
+          formData.append("file", item.file, item.file.name);
+          formData.append("mediaType", item.mediaType);
+          formData.append("caption", item.caption || "");
+          formData.append("title", item.title || "");
 
-          setBatchItems((prev) =>
-            prev.map((it) =>
-              it.id === item.id ? { ...it, status: "success", postId: finalPostId } : it
-            )
-          );
+          if (publishDestination === "story") {
+            formData.append(
+              "action",
+              item.mediaType === "video" ? "publish_video_story" : "publish_photo_story"
+            );
+          } else {
+            formData.append("action", "publish_feed");
+          }
 
-          historyItemResults.push({
-            id: item.id,
-            mediaType: item.mediaType,
-            status: "success",
-            postId: finalPostId,
-            preview: item.caption.slice(0, 50) + "...",
+          const res = await fetch("/api/story-publisher", {
+            method: "POST",
+            body: formData,
           });
-        } else {
-          const errMessage = data.error || "ការផុសបរាជ័យ";
+
+          const data = await res.json();
+
+          if (res.ok && (data.success || data.postId)) {
+            completedCount++;
+            const finalPostId = data.postId || data.id;
+
+            setBatchItems((prev) =>
+              prev.map((it) =>
+                it.id === item.id ? { ...it, status: "success", postId: finalPostId } : it
+              )
+            );
+
+            historyItemResults.push({
+              id: item.id,
+              mediaType: item.mediaType,
+              status: "success",
+              postId: finalPostId,
+              preview: item.caption.slice(0, 50) + "...",
+            });
+          } else {
+            const errMessage = data.error || "ការផុសបរាជ័យ";
+            setBatchItems((prev) =>
+              prev.map((it) =>
+                it.id === item.id ? { ...it, status: "error", errorMessage: errMessage } : it
+              )
+            );
+
+            historyItemResults.push({
+              id: item.id,
+              mediaType: item.mediaType,
+              status: "error",
+              message: errMessage,
+            });
+          }
+        } catch (err: any) {
           setBatchItems((prev) =>
             prev.map((it) =>
-              it.id === item.id ? { ...it, status: "error", errorMessage: errMessage } : it
+              it.id === item.id
+                ? { ...it, status: "error", errorMessage: err.message || "Network Error" }
+                : it
             )
           );
 
@@ -367,71 +416,52 @@ export default function StoryBatchPublisherTab({
             id: item.id,
             mediaType: item.mediaType,
             status: "error",
-            message: errMessage,
+            message: err.message || "Network Error",
           });
         }
-      } catch (err: any) {
-        setBatchItems((prev) =>
-          prev.map((it) =>
-            it.id === item.id
-              ? { ...it, status: "error", errorMessage: err.message || "Network Error" }
-              : it
-          )
-        );
 
-        historyItemResults.push({
-          id: item.id,
-          mediaType: item.mediaType,
-          status: "error",
-          message: err.message || "Network Error",
+        // Small pause between items
+        if (publishDestination === "feed" && feedDelayMinutes > 0 && i < batchItems.length - 1) {
+          setPublishProgress((prev) => ({
+            ...prev!,
+            statusText: `⏳ [${targetPage.name}] រង់ចាំចន្លោះពេលសុវត្ថិភាព Meta (${feedDelayMinutes} នាទី)...`,
+          }));
+          await new Promise((r) => setTimeout(r, feedDelayMinutes * 60 * 1000));
+        } else {
+          await new Promise((r) => setTimeout(r, 1200));
+        }
+      }
+
+      // Record history per page
+      const record = {
+        id: `batch_${Date.now()}_${pIdx}`,
+        targetPageId: pId,
+        targetPageName: targetPage.name,
+        publishType: publishDestination,
+        totalItems,
+        successCount: completedCount,
+        publishedAt: new Date().toISOString(),
+        items: historyItemResults,
+      };
+
+      try {
+        await fetch("/api/story-publisher", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "save_history", record }),
         });
-      }
-
-      setPublishProgress({
-        current: i + 1,
-        total,
-        percent: Math.round(((i + 1) / total) * 100),
-        statusText: `បានបញ្ចប់ ${i + 1}/${total} ឯកសារ!`,
-      });
-
-      // Smart Meta Delay (if posting multiple items to feed and not the last item)
-      if (publishDestination === "feed" && feedDelayMinutes > 0 && i < batchItems.length - 1) {
-        setPublishProgress((prev) => ({
-          ...prev!,
-          statusText: `⏳ រង់ចាំចន្លោះពេលសុវត្ថិភាព Meta (${feedDelayMinutes} នាទី) មុនពេលផុស Post បន្ទាប់...`,
-        }));
-        await new Promise((r) => setTimeout(r, feedDelayMinutes * 60 * 1000));
-      } else {
-        // Small 1.5s pause for Story carousel order
-        await new Promise((r) => setTimeout(r, 1500));
-      }
+      } catch {}
     }
 
-    // Save batch record to history
-    const record = {
-      id: `batch_${Date.now()}`,
-      targetPageId: selectedPageId,
-      targetPageName: targetPage.name,
-      publishType: publishDestination,
-      totalItems: total,
-      successCount: completedCount,
-      publishedAt: new Date().toISOString(),
-      items: historyItemResults,
-    };
-
-    try {
-      await fetch("/api/story-publisher", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "save_history", record }),
-      });
-      loadHistory();
-    } catch {}
-
+    setPublishProgress({
+      current: grandTotalSteps,
+      total: grandTotalSteps,
+      percent: 100,
+      statusText: `🎉 បានផុសបញ្ចប់ទៅកាន់ ${selectedPageIds.length} Pages ជោគជ័យ!`,
+    });
+    loadHistory();
     setIsPublishing(false);
   };
-
-  const selectedPage = pagesList.find((p) => p.id === selectedPageId);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
@@ -542,61 +572,150 @@ export default function StoryBatchPublisherTab({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* LEFT COLUMN: TARGET PAGE & SETTINGS */}
         <div className="space-y-5">
-          {/* 1. Target Page Selector */}
-          <div className="rounded-2xl border border-slate-800 bg-[#0B1220] p-5 shadow-lg space-y-4">
+          {/* 1. Target Page Selector (Multi-select with Member filter & Select All) */}
+          <div className="rounded-2xl border border-slate-800 bg-[#0B1220] p-5 shadow-lg space-y-3.5">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-white flex items-center gap-2">
-                <span>១. ជ្រើសរើស Facebook Page គោលដៅ</span>
-                <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
-              </label>
-              <span className="text-[10px] text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/20 font-medium">
-                Single Page Focus
+              <div>
+                <label className="text-xs font-bold text-white flex items-center gap-2">
+                  <span>១. ជ្រើសរើស Facebook Pages ({pagesList.length} Pages)</span>
+                  <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+                </label>
+                <span className="text-[10px] text-cyan-400">
+                  ● អាចជ្រើសរើសច្រើន Page តាមចិត្តក្នុងពេលតែមួយ
+                </span>
+              </div>
+              <span className="text-[11px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-2.5 py-0.5 rounded-full font-mono">
+                {selectedPageIds.length}/{pagesList.length} Pages
               </span>
             </div>
 
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-              {pagesList.map((p) => {
-                const isSelected = selectedPageId === p.id;
+            {/* Member Filter Pills */}
+            {memberNames.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-slate-900/80 border border-slate-800 text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedMemberFilter("all");
+                    setSelectedPageIds(pagesList.map((p) => p.id));
+                  }}
+                  className={`px-2.5 py-1 rounded-lg font-medium transition text-[11px] ${
+                    selectedMemberFilter === "all"
+                      ? "bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-bold shadow"
+                      : "text-slate-400 hover:text-white hover:bg-slate-800"
+                  }`}
+                >
+                  ទាំងអស់ ({pagesList.length})
+                </button>
+                {memberNames.map((mName) => {
+                  const mPagesCount = pagesList.filter(
+                    (p) => (p.ownerName || (p as any).memberName) === mName
+                  ).length;
+                  return (
+                    <button
+                      key={mName}
+                      type="button"
+                      onClick={() => {
+                        setSelectedMemberFilter(mName);
+                        setSelectedPageIds(
+                          pagesList
+                            .filter((p) => (p.ownerName || (p as any).memberName) === mName)
+                            .map((p) => p.id)
+                        );
+                      }}
+                      className={`px-2.5 py-1 rounded-lg font-medium transition text-[11px] flex items-center gap-1 ${
+                        selectedMemberFilter === mName
+                          ? "bg-cyan-600 text-white font-bold shadow"
+                          : "text-slate-400 hover:text-white hover:bg-slate-800"
+                      }`}
+                    >
+                      <span>👤 {mName}</span>
+                      <span className="opacity-80">({mPagesCount})</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Shortcuts: Select All / Deselect All */}
+            <div className="flex items-center justify-between text-[11px] text-slate-400 border-b border-slate-800 pb-2">
+              <span>
+                {selectedMemberFilter === "all"
+                  ? `Page ទាំងអស់ (${displayedPages.length})`
+                  : `Page របស់ ${selectedMemberFilter} (${displayedPages.length})`}
+              </span>
+              <div className="flex items-center gap-2 font-semibold">
+                <button
+                  type="button"
+                  onClick={selectAllDisplayed}
+                  className="text-cyan-400 hover:text-cyan-300 hover:underline"
+                >
+                  ✓ ជ្រើសទាំងអស់
+                </button>
+                <span>•</span>
+                <button
+                  type="button"
+                  onClick={deselectAllDisplayed}
+                  className="text-slate-500 hover:text-slate-400 hover:underline"
+                >
+                  ដោះទាំងអស់
+                </button>
+              </div>
+            </div>
+
+            {/* Pages Checkbox List */}
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+              {displayedPages.map((p) => {
+                const isSelected = selectedPageIds.includes(p.id);
+                const owner = p.ownerName || (p as any).memberName;
                 return (
-                  <button
+                  <div
                     key={p.id}
-                    type="button"
-                    onClick={() => setSelectedPageId(p.id)}
-                    className={`flex w-full items-center justify-between rounded-xl p-3 text-xs transition border ${
+                    onClick={() => togglePageSelect(p.id)}
+                    className={`flex items-center justify-between rounded-xl p-3 text-xs transition border cursor-pointer select-none ${
                       isSelected
-                        ? "border-cyan-400 bg-gradient-to-r from-cyan-950/60 to-blue-950/60 text-white font-bold shadow-md shadow-cyan-950/30"
-                        : "border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700 hover:bg-slate-800/60"
+                        ? "border-cyan-400/80 bg-gradient-to-r from-cyan-950/50 to-blue-950/40 text-white font-medium shadow-md shadow-cyan-950/20"
+                        : "border-slate-800/80 bg-slate-900/50 text-slate-400 hover:border-slate-700 hover:bg-slate-800/40"
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 text-left truncate">
+                    <div className="flex items-center gap-2.5 text-left truncate flex-1 mr-2">
                       <div className="h-7 w-7 rounded-lg bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center font-bold text-white text-[11px] shrink-0">
                         {p.name.charAt(0)}
                       </div>
                       <div className="truncate">
-                        <div className="truncate">{p.name}</div>
-                        <div className="text-[10px] text-slate-400 font-normal truncate">
+                        <div className="truncate flex items-center gap-1.5">
+                          <span className={isSelected ? "text-white font-bold" : "text-slate-300"}>
+                            {p.name}
+                          </span>
+                          {owner && (
+                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-cyan-300 border border-slate-700">
+                              {owner}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-normal truncate">
                           {p.category || "Facebook Page"}
                         </div>
                       </div>
                     </div>
 
-                    <div className="shrink-0 ml-2">
-                      {isSelected ? (
-                        <CheckCircle2 className="h-4 w-4 text-cyan-400" />
-                      ) : (
-                        <div className="h-3.5 w-3.5 rounded-full border border-slate-700" />
-                      )}
+                    <div className="shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => {}} // handled by parent onClick
+                        className="h-4 w-4 rounded border-slate-700 bg-slate-800 text-cyan-500 focus:ring-0 cursor-pointer pointer-events-none"
+                      />
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
 
-            {selectedPage && (
-              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-[11px] text-emerald-300 flex items-center gap-2">
+            {selectedPageIds.length > 0 && (
+              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-2.5 text-[11px] text-emerald-300 flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
                 <span>
-                  Page បច្ចុប្បន្ន: <b>{selectedPage.name}</b> (រួចរាល់សម្រាប់ការផុស Story & Multi-Post)
+                  បានជ្រើសរើស <b>{selectedPageIds.length} Pages</b> (រួចរាល់សម្រាប់ការផុស Story & Multi-Post)
                 </span>
               </div>
             )}
@@ -988,14 +1107,14 @@ export default function StoryBatchPublisherTab({
                   សរុប: <span className="text-white font-bold">{batchItems.length}</span> ឯកសារ ➔
                   គោលដៅ:{" "}
                   <span className="text-cyan-400 font-bold">
-                    {selectedPage?.name || "មិនទាន់រើស"}
+                    {selectedPageIds.length} Pages
                   </span>
                 </div>
 
                 <button
                   type="button"
                   onClick={handlePublishBatch}
-                  disabled={isPublishing}
+                  disabled={isPublishing || selectedPageIds.length === 0}
                   className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-cyan-600 to-teal-500 hover:opacity-95 px-6 py-3 text-xs font-bold text-white shadow-xl shadow-cyan-500/25 transition disabled:opacity-50"
                 >
                   {isPublishing ? (
@@ -1008,8 +1127,8 @@ export default function StoryBatchPublisherTab({
                       <Send className="h-4 w-4" />
                       <span>
                         {publishDestination === "story"
-                          ? `ផុសចូល Facebook Story ទាំង ${batchItems.length} ភ្លាមៗ`
-                          : `ផុស Multi-Post (${batchItems.length}) ចូល Page`}
+                          ? `ផុសចូល Facebook Story លើ ${selectedPageIds.length} Pages (${batchItems.length} Slides)`
+                          : `ផុស Multi-Post (${batchItems.length}) ចូល ${selectedPageIds.length} Pages`}
                       </span>
                     </>
                   )}
