@@ -670,231 +670,260 @@ export default function VideoPublisherTab({
       const tokenData = await tokenRes.json();
       const tokenMap: Record<string, string> = tokenData?.tokens || {};
 
-      // DIRECT FACEBOOK VIDEO UPLOADER (Supports 10MB to 5,000MB videos with Live Progress)
+      // RESUMABLE CHUNKED VIDEO UPLOADER (Zero CORS issues, works for 10MB to 5,000MB videos with Live Chunk Progress)
       if (mediaType === "video" && videoFile) {
         const fileSizeMb = (videoFile.size / (1024 * 1024)).toFixed(1);
         const resultsList: any[] = [];
 
-        // Helper for direct Facebook upload via XHR with live percentage progress
-        const uploadToFacebookDirect = (
+        // Helper for Resumable Chunked Video Upload (Bypasses all CORS & size limits)
+        const uploadViaResumableChunks = async (
           pId: string,
-          pToken: string,
+          pName: string,
           caption: string,
-          onProgress?: (pct: number) => void
+          onProgress?: (pct: number, chunkIndex: number, totalChunks: number) => void
         ): Promise<{ id: string }> => {
-          return new Promise((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            xhr.open("POST", `https://graph-video.facebook.com/v19.0/${pId}/videos`);
+          const fileSize = videoFile.size;
+          const CHUNK_SIZE = 2.5 * 1024 * 1024; // 2.5MB per slice
+          const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
 
-            if (xhr.upload && onProgress) {
-              xhr.upload.onprogress = (evt) => {
-                if (evt.lengthComputable) {
-                  const pct = Math.round((evt.loaded / evt.total) * 100);
-                  onProgress(pct);
-                }
-              };
-            }
-
-            xhr.onload = () => {
-              try {
-                const data = JSON.parse(xhr.responseText);
-                if (xhr.status >= 200 && xhr.status < 300 && (data.id || data.post_id)) {
-                  resolve({ id: data.id || data.post_id });
-                } else {
-                  reject(new Error(data?.error?.message || "Facebook Graph API returned an error"));
-                }
-              } catch {
-                reject(new Error("Invalid response from Facebook: " + xhr.responseText));
-              }
-            };
-
-            xhr.onerror = () => {
-              reject(new Error("Network error communicating with Facebook"));
-            };
-
-            const formData = new FormData();
-            formData.append("source", videoFile, videoFile.name || "video.mp4");
-            formData.append("description", caption);
-            formData.append("title", videoTitle || "Video Post");
-            formData.append("access_token", pToken);
-            formData.append("published", "true");
-
-            xhr.send(formData);
+          // 1. Phase 1: Start session
+          const startRes = await fetch("/api/video-publisher", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "resumable_start",
+              pageId: pId,
+              fileSize,
+            }),
           });
-        };
-
-        // Helper for thumbnail upload directly to Facebook
-        const setThumbnailDirect = async (postId: string, pToken: string, thumbData: string) => {
-          try {
-            const base64Data = thumbData.replace(/^data:image\/\w+;base64,/, "");
-            const byteChars = atob(base64Data);
-            const byteNums = new Array(byteChars.length);
-            for (let i = 0; i < byteChars.length; i++) {
-              byteNums[i] = byteChars.charCodeAt(i);
-            }
-            const blob = new Blob([new Uint8Array(byteNums)], { type: "image/jpeg" });
-            const thumbForm = new FormData();
-            thumbForm.append("source", blob, "thumbnail.jpg");
-            thumbForm.append("is_preferred", "true");
-            thumbForm.append("access_token", pToken);
-
-            await fetch(`https://graph.facebook.com/v19.0/${postId}/thumbnails`, {
-              method: "POST",
-              body: thumbForm,
-            });
-          } catch (e) {
-            console.warn("Could not set thumbnail directly:", e);
+          const startData = await startRes.json();
+          if (!startRes.ok || !startData.upload_session_id) {
+            const errDetail =
+              startData.error?.message ||
+              startData.error ||
+              "មិនអាចបង្កើត Session Upload ជាមួយ Facebook បានទេ (សូមពិនិត្យមើល Access Token)";
+            throw new Error(`Facebook Error: ${errDetail}`);
           }
+
+          const sessionId = startData.upload_session_id;
+          const initVideoId = startData.video_id;
+
+          // 2. Phase 2: Sequential Chunk Transfers
+          let startOffset = Number(startData.start_offset || 0);
+          let chunkIndex = 0;
+
+          while (startOffset < fileSize) {
+            const endOffset = Math.min(startOffset + CHUNK_SIZE, fileSize);
+            const chunkBlob = videoFile.slice(startOffset, endOffset);
+
+            const chunkForm = new FormData();
+            chunkForm.append("action", "resumable_transfer");
+            chunkForm.append("pageId", pId);
+            chunkForm.append("upload_session_id", sessionId);
+            chunkForm.append("start_offset", startOffset.toString());
+            chunkForm.append("chunk", chunkBlob, "chunk.mp4");
+
+            const transferRes = await fetch("/api/video-publisher", {
+              method: "POST",
+              body: chunkForm,
+            });
+            const transferData = await transferRes.json();
+            if (!transferRes.ok || transferData.error) {
+              const errDetail =
+                transferData.error?.message || transferData.error || "ការផ្ទេរ Chunk បរាជ័យ";
+              throw new Error(`Chunk Transfer Error (${chunkIndex + 1}/${totalChunks}): ${errDetail}`);
+            }
+
+            chunkIndex++;
+            const pct = Math.min(99, Math.round((endOffset / fileSize) * 100));
+            if (onProgress) {
+              onProgress(pct, chunkIndex, totalChunks);
+            }
+
+            const nextOffset = Number(transferData.start_offset);
+            if (
+              nextOffset === Number(transferData.end_offset) ||
+              nextOffset >= fileSize ||
+              endOffset >= fileSize
+            ) {
+              break;
+            }
+            startOffset = nextOffset;
+          }
+
+          // 3. Phase 3: Finish & Attach Thumbnail
+          const finishRes = await fetch("/api/video-publisher", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "resumable_finish",
+              pageId: pId,
+              upload_session_id: sessionId,
+              title: videoTitle || "Video Post",
+              description: caption,
+              thumbnail: thumbnailDataUrl || undefined,
+            }),
+          });
+          const finishData = await finishRes.json();
+          if (!finishRes.ok || finishData.error) {
+            const errDetail =
+              finishData.error?.message || finishData.error || "មិនអាចបញ្ចប់ការផុសវីដេអូបានទេ";
+            throw new Error(`Facebook Finalize Error: ${errDetail}`);
+          }
+
+          if (onProgress) {
+            onProgress(100, totalChunks, totalChunks);
+          }
+
+          return { id: finishData.id || initVideoId };
         };
 
-        // 1. Upload directly to the first page with live progress
+        // 1. Upload via Resumable Chunks to the first page with live progress
         const firstItem = pageCaptions[0];
-        const firstToken = tokenMap[firstItem.pageId];
-        if (!firstToken) {
-          throw new Error(`ពុំមាន Access Token សម្រាប់ Page "${firstItem.pageName}" ទេ`);
-        }
 
         setPublishProgress({
           total: pageCaptions.length,
           completed: 0,
-          status: `កំពុង Upload វីដេអូ (${fileSizeMb} MB) ទៅកាន់ Facebook [${firstItem.pageName}]: 0%...`,
+          status: `កំពុងរៀបចំ Upload វីដេអូ (${fileSizeMb} MB) ទៅកាន់ Facebook [${firstItem.pageName}]...`,
         });
 
-        const firstResult = await uploadToFacebookDirect(
-          firstItem.pageId,
-          firstToken,
-          firstItem.caption,
-          (pct) => {
-            setPublishProgress({
-              total: pageCaptions.length,
-              completed: 0,
-              status: `កំពុង Upload វីដេអូ (${fileSizeMb} MB) ទៅកាន់ Facebook [${firstItem.pageName}]: ${pct}%...`,
-            });
-          }
-        );
+        try {
+          const firstResult = await uploadViaResumableChunks(
+            firstItem.pageId,
+            firstItem.pageName,
+            firstItem.caption,
+            (pct, chunk, total) => {
+              setPublishProgress({
+                total: pageCaptions.length,
+                completed: 0,
+                status: `កំពុង Upload វីដេអូ (${fileSizeMb} MB) ទៅកាន់ [${firstItem.pageName}]: Chunk ${chunk}/${total} (${pct}%)...`,
+              });
+            }
+          );
 
-        if (thumbnailDataUrl) {
-          await setThumbnailDirect(firstResult.id, firstToken, thumbnailDataUrl);
-        }
-
-        resultsList.push({
-          pageId: firstItem.pageId,
-          pageName: firstItem.pageName,
-          status: "success",
-          postId: firstResult.id,
-          captionPreview: firstItem.caption.slice(0, 70) + "...",
-          message: "បានផុសទៅកាន់ Facebook Page ផ្ទាល់ជោគជ័យ!" + (thumbnailDataUrl ? " (រួមទាំង Thumbnail)" : ""),
-        });
-
-        // 2. If there are other pages, syndicate using Facebook's CDN or upload
-        if (pageCaptions.length > 1) {
-          let fbSourceUrl = "";
-          setPublishProgress({
-            total: pageCaptions.length,
-            completed: 1,
-            status: "វីដេអូបាន Upload ជោគជ័យ! កំពុងទាញយកតំណភ្ជាប់ CDN សម្រាប់ចែករំលែកទៅ Pages ផ្សេងទៀត...",
+          resultsList.push({
+            pageId: firstItem.pageId,
+            pageName: firstItem.pageName,
+            status: "success",
+            postId: firstResult.id,
+            captionPreview: firstItem.caption.slice(0, 70) + "...",
+            message:
+              "បាន Upload និងផុសទៅកាន់ Facebook Page ជោគជ័យ!" +
+              (thumbnailDataUrl ? " (រួមទាំង Thumbnail)" : ""),
           });
 
-          for (let attempt = 0; attempt < 4; attempt++) {
-            await new Promise((r) => setTimeout(r, 1500));
-            try {
-              const srcRes = await fetch(
-                `https://graph.facebook.com/v19.0/${firstResult.id}?fields=source&access_token=${firstToken}`
-              );
-              const srcData = await srcRes.json();
-              if (srcData?.source) {
-                fbSourceUrl = srcData.source;
-                break;
-              }
-            } catch {}
-          }
-
-          const remainingItems = pageCaptions.slice(1);
-
-          if (fbSourceUrl) {
+          // 2. If there are other pages, syndicate using Facebook's CDN or upload
+          if (pageCaptions.length > 1) {
+            let fbSourceUrl = "";
             setPublishProgress({
               total: pageCaptions.length,
               completed: 1,
-              status: `កំពុងផុសទៅកាន់ ${remainingItems.length} Pages ទៀតតាមរយៈ Facebook CDN ផ្ទាល់...`,
+              status:
+                "វីដេអូបាន Upload ជោគជ័យ! កំពុងទាញយកតំណភ្ជាប់ Facebook CDN សម្រាប់ចែករំលែកទៅ Pages ផ្សេងទៀត...",
             });
 
-            const pubRes = await fetch("/api/video-publisher", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                action: "publish_video",
-                title: videoTitle || "វីដេអូផ្សព្វផ្សាយ",
-                videoUrl: fbSourceUrl,
-                thumbnail: thumbnailDataUrl || undefined,
-                mediaType: "video",
-                postType,
-                captionStyle,
-                pageCaptions: remainingItems,
-              }),
-            });
-
-            const pubData = await pubRes.json();
-            if (pubData.results) {
-              resultsList.push(...pubData.results);
-            }
-          } else {
-            for (let i = 0; i < remainingItems.length; i++) {
-              const item = remainingItems[i];
-              const pToken = tokenMap[item.pageId];
-              if (!pToken) {
-                resultsList.push({
-                  pageId: item.pageId,
-                  pageName: item.pageName,
-                  status: "error",
-                  captionPreview: item.caption.slice(0, 70) + "...",
-                  message: "ពុំមាន Access Token សម្រាប់ Page នេះទេ",
+            for (let attempt = 0; attempt < 8; attempt++) {
+              await new Promise((r) => setTimeout(r, 2000));
+              try {
+                const statusRes = await fetch("/api/video-publisher", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    action: "check_video_status",
+                    pageId: firstItem.pageId,
+                    videoId: firstResult.id,
+                  }),
                 });
-                continue;
-              }
+                const statusData = await statusRes.json();
+                if (statusData?.source) {
+                  fbSourceUrl = statusData.source;
+                  break;
+                }
+              } catch {}
+            }
 
+            const remainingItems = pageCaptions.slice(1);
+
+            if (fbSourceUrl) {
               setPublishProgress({
                 total: pageCaptions.length,
-                completed: 1 + i,
-                status: `កំពុងផុសទៅកាន់ [${item.pageName}]: 0%...`,
+                completed: 1,
+                status: `កំពុងផុសទៅកាន់ ${remainingItems.length} Pages ទៀតតាមរយៈ Facebook CDN ផ្ទាល់...`,
               });
 
-              try {
-                const res = await uploadToFacebookDirect(
-                  item.pageId,
-                  pToken,
-                  item.caption,
-                  (pct) => {
-                    setPublishProgress({
-                      total: pageCaptions.length,
-                      completed: 1 + i,
-                      status: `កំពុងផុសទៅកាន់ [${item.pageName}]: ${pct}%...`,
-                    });
-                  }
-                );
+              const pubRes = await fetch("/api/video-publisher", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "publish_video",
+                  title: videoTitle || "វីដេអូផ្សព្វផ្សាយ",
+                  videoUrl: fbSourceUrl,
+                  thumbnail: thumbnailDataUrl || undefined,
+                  mediaType: "video",
+                  postType,
+                  captionStyle,
+                  pageCaptions: remainingItems,
+                }),
+              });
 
-                if (thumbnailDataUrl) {
-                  await setThumbnailDirect(res.id, pToken, thumbnailDataUrl);
+              const pubData = await pubRes.json();
+              if (pubData.results) {
+                resultsList.push(...pubData.results);
+              }
+            } else {
+              // If CDN is not ready yet, upload directly using Resumable Chunks to each remaining page
+              for (let i = 0; i < remainingItems.length; i++) {
+                const item = remainingItems[i];
+                setPublishProgress({
+                  total: pageCaptions.length,
+                  completed: 1 + i,
+                  status: `កំពុង Upload វីដេអូទៅកាន់ [${item.pageName}]: 0%...`,
+                });
+
+                try {
+                  const res = await uploadViaResumableChunks(
+                    item.pageId,
+                    item.pageName,
+                    item.caption,
+                    (pct, chunk, total) => {
+                      setPublishProgress({
+                        total: pageCaptions.length,
+                        completed: 1 + i,
+                        status: `កំពុង Upload វីដេអូទៅកាន់ [${item.pageName}]: Chunk ${chunk}/${total} (${pct}%)...`,
+                      });
+                    }
+                  );
+
+                  resultsList.push({
+                    pageId: item.pageId,
+                    pageName: item.pageName,
+                    status: "success",
+                    postId: res.id,
+                    captionPreview: item.caption.slice(0, 70) + "...",
+                    message:
+                      "បាន Upload និងផុសទៅកាន់ Facebook Page ជោគជ័យ!" +
+                      (thumbnailDataUrl ? " (រួមទាំង Thumbnail)" : ""),
+                  });
+                } catch (err: any) {
+                  resultsList.push({
+                    pageId: item.pageId,
+                    pageName: item.pageName,
+                    status: "error",
+                    captionPreview: item.caption.slice(0, 70) + "...",
+                    message: err.message || "Failed to upload to page",
+                  });
                 }
-
-                resultsList.push({
-                  pageId: item.pageId,
-                  pageName: item.pageName,
-                  status: "success",
-                  postId: res.id,
-                  captionPreview: item.caption.slice(0, 70) + "...",
-                  message: "បានផុសទៅកាន់ Facebook Page ផ្ទាល់ជោគជ័យ!" + (thumbnailDataUrl ? " (រួមទាំង Thumbnail)" : ""),
-                });
-              } catch (err: any) {
-                resultsList.push({
-                  pageId: item.pageId,
-                  pageName: item.pageName,
-                  status: "error",
-                  captionPreview: item.caption.slice(0, 70) + "...",
-                  message: err.message || "Failed to upload to page",
-                });
               }
             }
           }
+        } catch (firstErr: any) {
+          resultsList.push({
+            pageId: firstItem.pageId,
+            pageName: firstItem.pageName,
+            status: "error",
+            captionPreview: firstItem.caption.slice(0, 70) + "...",
+            message: firstErr.message || "Failed to upload video to Facebook",
+          });
         }
 
         // Save Record to History

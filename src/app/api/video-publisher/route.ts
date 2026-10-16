@@ -444,9 +444,43 @@ export async function POST(req: NextRequest) {
   try {
     const contentType = req.headers.get("content-type") || "";
 
-    // 1. MULTIPART FORM-DATA: Server-side direct media publishing (Bypasses all Browser AdBlockers & CORS)
+    // 1. MULTIPART FORM-DATA: Server-side direct media publishing & chunk transfer
     if (contentType.includes("multipart/form-data")) {
       const formData = await req.formData();
+      const action = formData.get("action");
+
+      // Handle Resumable Transfer Chunk
+      if (action === "resumable_transfer") {
+        const pageId = formData.get("pageId") as string;
+        const uploadSessionId = formData.get("upload_session_id") as string;
+        const startOffset = formData.get("start_offset") as string;
+        const chunk = formData.get("chunk") as File | Blob | null;
+
+        if (!pageId || !uploadSessionId || !chunk) {
+          return NextResponse.json({ error: "Missing required chunk transfer parameters" }, { status: 400 });
+        }
+
+        const tokenMap = await getPageTokensMap();
+        const pageToken = tokenMap[pageId] || process.env.FB_PAGE_ACCESS_TOKEN;
+        if (!pageToken) {
+          return NextResponse.json({ error: `No access token found for page ${pageId}` }, { status: 400 });
+        }
+
+        const fbForm = new FormData();
+        fbForm.append("upload_phase", "transfer");
+        fbForm.append("upload_session_id", uploadSessionId);
+        fbForm.append("start_offset", startOffset || "0");
+        fbForm.append("access_token", pageToken);
+        fbForm.append("video_file_chunk", chunk, "chunk.mp4");
+
+        const fbRes = await fetch(`https://graph-video.facebook.com/v19.0/${pageId}/videos`, {
+          method: "POST",
+          body: fbForm,
+        });
+        const fbData = await fbRes.json();
+        return NextResponse.json(fbData, { status: fbRes.status });
+      }
+
       const mediaType = (formData.get("mediaType") as "video" | "photo" | "text") || "video";
       const file = formData.get("file") as File | null;
       const title = (formData.get("title") as string) || "";
@@ -626,6 +660,117 @@ export async function POST(req: NextRequest) {
     // 2. JSON REQUESTS
     const body = await req.json();
     const { action } = body;
+
+    // ACTION: Resumable Upload Phase 1 - Start
+    if (action === "resumable_start") {
+      const { pageId, fileSize } = body as { pageId: string; fileSize: number };
+      if (!pageId || !fileSize) {
+        return NextResponse.json({ error: "pageId and fileSize are required" }, { status: 400 });
+      }
+
+      const tokenMap = await getPageTokensMap();
+      const pageToken = tokenMap[pageId] || process.env.FB_PAGE_ACCESS_TOKEN;
+      if (!pageToken) {
+        return NextResponse.json({ error: `ពុំមាន Access Token សម្រាប់ Page ID ${pageId} ទេ (សូម Re-authorize តាម Facebook Login)` }, { status: 400 });
+      }
+
+      const params = new URLSearchParams({
+        upload_phase: "start",
+        file_size: fileSize.toString(),
+        access_token: pageToken,
+      });
+
+      const fbRes = await fetch(`https://graph-video.facebook.com/v19.0/${pageId}/videos`, {
+        method: "POST",
+        body: params,
+      });
+      const fbData = await fbRes.json();
+      return NextResponse.json(fbData, { status: fbRes.status });
+    }
+
+    // ACTION: Resumable Upload Phase 3 - Finish
+    if (action === "resumable_finish") {
+      const { pageId, upload_session_id, title, description, thumbnail } = body as {
+        pageId: string;
+        upload_session_id: string;
+        title?: string;
+        description?: string;
+        thumbnail?: string;
+      };
+
+      if (!pageId || !upload_session_id) {
+        return NextResponse.json({ error: "pageId and upload_session_id are required" }, { status: 400 });
+      }
+
+      const tokenMap = await getPageTokensMap();
+      const pageToken = tokenMap[pageId] || process.env.FB_PAGE_ACCESS_TOKEN;
+      if (!pageToken) {
+        return NextResponse.json({ error: `ពុំមាន Access Token សម្រាប់ Page ID ${pageId} ទេ` }, { status: 400 });
+      }
+
+      const params = new URLSearchParams({
+        upload_phase: "finish",
+        upload_session_id,
+        title: title || "Video Post",
+        description: description || "",
+        published: "true",
+        access_token: pageToken,
+      });
+
+      const fbRes = await fetch(`https://graph-video.facebook.com/v19.0/${pageId}/videos`, {
+        method: "POST",
+        body: params,
+      });
+      const fbData = await fbRes.json();
+
+      const finalVideoId = fbData.id || fbData.video_id;
+
+      // Upload thumbnail if provided
+      if (thumbnail && finalVideoId) {
+        try {
+          await uploadFacebookVideoThumbnail(finalVideoId, pageToken, thumbnail);
+        } catch (thErr) {
+          console.warn("Could not attach thumbnail to finished video:", thErr);
+        }
+      }
+
+      return NextResponse.json(
+        {
+          success: fbData.success || !!finalVideoId,
+          id: finalVideoId,
+          ...fbData,
+        },
+        { status: fbRes.status }
+      );
+    }
+
+    // ACTION: Check Video Processing Status & Fetch CDN URL
+    if (action === "check_video_status") {
+      const { pageId, videoId } = body as { pageId: string; videoId: string };
+      if (!pageId || !videoId) {
+        return NextResponse.json({ error: "pageId and videoId required" }, { status: 400 });
+      }
+
+      const tokenMap = await getPageTokensMap();
+      const pageToken = tokenMap[pageId] || process.env.FB_PAGE_ACCESS_TOKEN;
+      if (!pageToken) {
+        return NextResponse.json({ error: "No token found" }, { status: 400 });
+      }
+
+      try {
+        const fbRes = await fetch(
+          `https://graph.facebook.com/v19.0/${videoId}?fields=source,status,title&access_token=${pageToken}`
+        );
+        const fbData = await fbRes.json();
+        return NextResponse.json({
+          source: fbData?.source || null,
+          status: fbData?.status || null,
+          fbData,
+        });
+      } catch (err: any) {
+        return NextResponse.json({ error: err.message }, { status: 500 });
+      }
+    }
 
     // ACTION 1: Generate High-Thinking AI Captions tailored to each page & style
     if (action === "generate_captions") {
