@@ -665,75 +665,300 @@ export default function VideoPublisherTab({
           `${videoTitle || "ការផ្សព្វផ្សាយពិសេស"}\n\n${mediaStory || baseTopic}\n\n#${p.name.replace(/\s+/g, "")}`,
       }));
 
+      // Fetch Page Access Tokens map from API
+      const tokenRes = await fetch("/api/video-publisher?action=tokens");
+      const tokenData = await tokenRes.json();
+      const tokenMap: Record<string, string> = tokenData?.tokens || {};
+
+      // DIRECT FACEBOOK VIDEO UPLOADER (Supports 10MB to 5,000MB videos with Live Progress)
+      if (mediaType === "video" && videoFile) {
+        const fileSizeMb = (videoFile.size / (1024 * 1024)).toFixed(1);
+        const resultsList: any[] = [];
+
+        // Helper for direct Facebook upload via XHR with live percentage progress
+        const uploadToFacebookDirect = (
+          pId: string,
+          pToken: string,
+          caption: string,
+          onProgress?: (pct: number) => void
+        ): Promise<{ id: string }> => {
+          return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open("POST", `https://graph-video.facebook.com/v19.0/${pId}/videos`);
+
+            if (xhr.upload && onProgress) {
+              xhr.upload.onprogress = (evt) => {
+                if (evt.lengthComputable) {
+                  const pct = Math.round((evt.loaded / evt.total) * 100);
+                  onProgress(pct);
+                }
+              };
+            }
+
+            xhr.onload = () => {
+              try {
+                const data = JSON.parse(xhr.responseText);
+                if (xhr.status >= 200 && xhr.status < 300 && (data.id || data.post_id)) {
+                  resolve({ id: data.id || data.post_id });
+                } else {
+                  reject(new Error(data?.error?.message || "Facebook Graph API returned an error"));
+                }
+              } catch {
+                reject(new Error("Invalid response from Facebook: " + xhr.responseText));
+              }
+            };
+
+            xhr.onerror = () => {
+              reject(new Error("Network error communicating with Facebook"));
+            };
+
+            const formData = new FormData();
+            formData.append("source", videoFile, videoFile.name || "video.mp4");
+            formData.append("description", caption);
+            formData.append("title", videoTitle || "Video Post");
+            formData.append("access_token", pToken);
+            formData.append("published", "true");
+
+            xhr.send(formData);
+          });
+        };
+
+        // Helper for thumbnail upload directly to Facebook
+        const setThumbnailDirect = async (postId: string, pToken: string, thumbData: string) => {
+          try {
+            const base64Data = thumbData.replace(/^data:image\/\w+;base64,/, "");
+            const byteChars = atob(base64Data);
+            const byteNums = new Array(byteChars.length);
+            for (let i = 0; i < byteChars.length; i++) {
+              byteNums[i] = byteChars.charCodeAt(i);
+            }
+            const blob = new Blob([new Uint8Array(byteNums)], { type: "image/jpeg" });
+            const thumbForm = new FormData();
+            thumbForm.append("source", blob, "thumbnail.jpg");
+            thumbForm.append("is_preferred", "true");
+            thumbForm.append("access_token", pToken);
+
+            await fetch(`https://graph.facebook.com/v19.0/${postId}/thumbnails`, {
+              method: "POST",
+              body: thumbForm,
+            });
+          } catch (e) {
+            console.warn("Could not set thumbnail directly:", e);
+          }
+        };
+
+        // 1. Upload directly to the first page with live progress
+        const firstItem = pageCaptions[0];
+        const firstToken = tokenMap[firstItem.pageId];
+        if (!firstToken) {
+          throw new Error(`ពុំមាន Access Token សម្រាប់ Page "${firstItem.pageName}" ទេ`);
+        }
+
+        setPublishProgress({
+          total: pageCaptions.length,
+          completed: 0,
+          status: `កំពុង Upload វីដេអូ (${fileSizeMb} MB) ទៅកាន់ Facebook [${firstItem.pageName}]: 0%...`,
+        });
+
+        const firstResult = await uploadToFacebookDirect(
+          firstItem.pageId,
+          firstToken,
+          firstItem.caption,
+          (pct) => {
+            setPublishProgress({
+              total: pageCaptions.length,
+              completed: 0,
+              status: `កំពុង Upload វីដេអូ (${fileSizeMb} MB) ទៅកាន់ Facebook [${firstItem.pageName}]: ${pct}%...`,
+            });
+          }
+        );
+
+        if (thumbnailDataUrl) {
+          await setThumbnailDirect(firstResult.id, firstToken, thumbnailDataUrl);
+        }
+
+        resultsList.push({
+          pageId: firstItem.pageId,
+          pageName: firstItem.pageName,
+          status: "success",
+          postId: firstResult.id,
+          captionPreview: firstItem.caption.slice(0, 70) + "...",
+          message: "បានផុសទៅកាន់ Facebook Page ផ្ទាល់ជោគជ័យ!" + (thumbnailDataUrl ? " (រួមទាំង Thumbnail)" : ""),
+        });
+
+        // 2. If there are other pages, syndicate using Facebook's CDN or upload
+        if (pageCaptions.length > 1) {
+          let fbSourceUrl = "";
+          setPublishProgress({
+            total: pageCaptions.length,
+            completed: 1,
+            status: "វីដេអូបាន Upload ជោគជ័យ! កំពុងទាញយកតំណភ្ជាប់ CDN សម្រាប់ចែករំលែកទៅ Pages ផ្សេងទៀត...",
+          });
+
+          for (let attempt = 0; attempt < 4; attempt++) {
+            await new Promise((r) => setTimeout(r, 1500));
+            try {
+              const srcRes = await fetch(
+                `https://graph.facebook.com/v19.0/${firstResult.id}?fields=source&access_token=${firstToken}`
+              );
+              const srcData = await srcRes.json();
+              if (srcData?.source) {
+                fbSourceUrl = srcData.source;
+                break;
+              }
+            } catch {}
+          }
+
+          const remainingItems = pageCaptions.slice(1);
+
+          if (fbSourceUrl) {
+            setPublishProgress({
+              total: pageCaptions.length,
+              completed: 1,
+              status: `កំពុងផុសទៅកាន់ ${remainingItems.length} Pages ទៀតតាមរយៈ Facebook CDN ផ្ទាល់...`,
+            });
+
+            const pubRes = await fetch("/api/video-publisher", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "publish_video",
+                title: videoTitle || "វីដេអូផ្សព្វផ្សាយ",
+                videoUrl: fbSourceUrl,
+                thumbnail: thumbnailDataUrl || undefined,
+                mediaType: "video",
+                postType,
+                captionStyle,
+                pageCaptions: remainingItems,
+              }),
+            });
+
+            const pubData = await pubRes.json();
+            if (pubData.results) {
+              resultsList.push(...pubData.results);
+            }
+          } else {
+            for (let i = 0; i < remainingItems.length; i++) {
+              const item = remainingItems[i];
+              const pToken = tokenMap[item.pageId];
+              if (!pToken) {
+                resultsList.push({
+                  pageId: item.pageId,
+                  pageName: item.pageName,
+                  status: "error",
+                  captionPreview: item.caption.slice(0, 70) + "...",
+                  message: "ពុំមាន Access Token សម្រាប់ Page នេះទេ",
+                });
+                continue;
+              }
+
+              setPublishProgress({
+                total: pageCaptions.length,
+                completed: 1 + i,
+                status: `កំពុងផុសទៅកាន់ [${item.pageName}]: 0%...`,
+              });
+
+              try {
+                const res = await uploadToFacebookDirect(
+                  item.pageId,
+                  pToken,
+                  item.caption,
+                  (pct) => {
+                    setPublishProgress({
+                      total: pageCaptions.length,
+                      completed: 1 + i,
+                      status: `កំពុងផុសទៅកាន់ [${item.pageName}]: ${pct}%...`,
+                    });
+                  }
+                );
+
+                if (thumbnailDataUrl) {
+                  await setThumbnailDirect(res.id, pToken, thumbnailDataUrl);
+                }
+
+                resultsList.push({
+                  pageId: item.pageId,
+                  pageName: item.pageName,
+                  status: "success",
+                  postId: res.id,
+                  captionPreview: item.caption.slice(0, 70) + "...",
+                  message: "បានផុសទៅកាន់ Facebook Page ផ្ទាល់ជោគជ័យ!" + (thumbnailDataUrl ? " (រួមទាំង Thumbnail)" : ""),
+                });
+              } catch (err: any) {
+                resultsList.push({
+                  pageId: item.pageId,
+                  pageName: item.pageName,
+                  status: "error",
+                  captionPreview: item.caption.slice(0, 70) + "...",
+                  message: err.message || "Failed to upload to page",
+                });
+              }
+            }
+          }
+        }
+
+        // Save Record to History
+        const newRecord: VideoPostRecord = {
+          id: `vpost_${Date.now()}`,
+          title: videoTitle || "វីដេអូផ្សព្វផ្សាយ",
+          videoUrl: "[Direct Video Upload to Facebook]",
+          mediaType: "video",
+          postType,
+          captionStyle,
+          targetPagesCount: pageCaptions.length,
+          publishedAt: new Date().toISOString(),
+          status: resultsList.every((r) => r.status === "success") ? "completed" : "partial",
+          results: resultsList,
+        };
+
+        await fetch("/api/video-publisher", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "save_history",
+            record: newRecord,
+          }),
+        });
+
+        setPublishResults(resultsList);
+        setHistory((prev) => [newRecord, ...prev.filter((r) => r.id !== newRecord.id)]);
+        fetchHistory();
+        return;
+      }
+
       let finalMediaUrl = videoDirectUrl || "";
 
-      // 1. If user selected a local file (video or photo), upload directly to Cloud Storage via signed URL
-      // This completely bypasses Vercel's 4.5MB payload limit and avoids browser CORS blocks
-      const activeFile = mediaType === "video" ? videoFile : mediaType === "photo" ? photoFile : null;
-
+      // 2. Photo uploads or small files
+      const activeFile = mediaType === "photo" ? photoFile : null;
       if (activeFile) {
-        const fileSizeMb = activeFile.size / (1024 * 1024);
+        setPublishProgress({
+          total: selectedPageIds.length,
+          completed: 0,
+          status: `កំពុង Upload រូបភាព (${(activeFile.size / (1024 * 1024)).toFixed(1)} MB) ទៅកាន់ Fast Storage...`,
+        });
 
-        // If file is > 48MB (e.g., 109MB raw 4K videos), Supabase free tier caps at 50MB.
-        // We route automatically to High-Capacity Direct Cloud (supports up to 1GB with CORS).
-        // If file is <= 48MB, we use our dedicated fast Supabase Storage bucket.
-        if (fileSizeMb > 48) {
-          setPublishProgress({
-            total: selectedPageIds.length,
-            completed: 0,
-            status: `កំពុង Upload ${mediaType === "video" ? "វីដេអូធំ" : "រូបភាព"} (${fileSizeMb.toFixed(1)} MB) ទៅកាន់ High-Capacity Cloud Server (អាចចំណាយពេល ១-២ នាទី)...`,
-          });
+        const uploadUrlRes = await fetch(
+          `/api/video-publisher?action=get_upload_url&fileName=${encodeURIComponent(activeFile.name)}`
+        );
+        const uploadUrlData = await uploadUrlRes.json();
 
-          const form = new FormData();
-          form.append("reqtype", "fileupload");
-          form.append("time", "24h");
-          form.append("fileToUpload", activeFile, activeFile.name);
-
-          const lbRes = await fetch("https://litterbox.catbox.moe/resources/internals/api.php", {
-            method: "POST",
-            body: form,
-          });
-
-          if (!lbRes.ok) {
-            throw new Error(`ការ Upload វីដេអូទំហំធំ (${fileSizeMb.toFixed(1)} MB) បរាជ័យ។ សូមសាកល្បង Compress វីដេអូ ឬដាក់ Link វីដេអូផ្ទាល់`);
-          }
-
-          const uploadedUrl = (await lbRes.text()).trim();
-          if (!uploadedUrl.startsWith("http")) {
-            throw new Error("មិនអាចទទួលបាន URL វីដេអូពី Cloud Server: " + uploadedUrl);
-          }
-
-          finalMediaUrl = uploadedUrl;
-        } else {
-          setPublishProgress({
-            total: selectedPageIds.length,
-            completed: 0,
-            status: `កំពុង Upload ${mediaType === "video" ? "វីដេអូ" : "រូបភាព"} (${fileSizeMb.toFixed(1)} MB) ទៅកាន់ Fast Cloud Storage...`,
-          });
-
-          const uploadUrlRes = await fetch(
-            `/api/video-publisher?action=get_upload_url&fileName=${encodeURIComponent(activeFile.name)}`
-          );
-          const uploadUrlData = await uploadUrlRes.json();
-
-          if (!uploadUrlRes.ok || !uploadUrlData?.signedUrl) {
-            throw new Error(uploadUrlData?.error || "មិនអាចបង្កើតតំណភ្ជាប់ Upload បានទេ");
-          }
-
-          const putRes = await fetch(uploadUrlData.signedUrl, {
-            method: "PUT",
-            headers: {
-              "Content-Type": activeFile.type || (mediaType === "video" ? "video/mp4" : "image/jpeg"),
-            },
-            body: activeFile,
-          });
-
-          if (!putRes.ok) {
-            throw new Error(`ការ Upload ទៅកាន់ Cloud បរាជ័យ (Code: ${putRes.status})។ សូម Compress វីដេអូ ឬសាកល្បងម្ដងទៀត`);
-          }
-
-          finalMediaUrl = uploadUrlData.publicUrl;
+        if (!uploadUrlRes.ok || !uploadUrlData?.signedUrl) {
+          throw new Error(uploadUrlData?.error || "មិនអាចបង្កើតតំណភ្ជាប់ Upload បានទេ");
         }
+
+        const putRes = await fetch(uploadUrlData.signedUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type": activeFile.type || "image/jpeg",
+          },
+          body: activeFile,
+        });
+
+        if (!putRes.ok) {
+          throw new Error("ការ Upload រូបភាពបរាជ័យ។");
+        }
+
+        finalMediaUrl = uploadUrlData.publicUrl;
       }
 
       // 2. Dispatch to Facebook via Server API (Node.js bypasses all browser CORS & AdBlockers)
