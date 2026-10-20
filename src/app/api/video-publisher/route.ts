@@ -319,6 +319,10 @@ export async function GET(req: NextRequest) {
     }
 
     if (searchParams.get("action") === "pages") {
+      const isAdmin = searchParams.get("isAdmin") === "true";
+      const userId = searchParams.get("userId");
+      const userName = searchParams.get("userName") || searchParams.get("owner");
+
       const { data: memberData } = await supabase
         .from("bot_settings")
         .select("dm_template")
@@ -330,6 +334,15 @@ export async function GET(req: NextRequest) {
       const tokenMap = await getPageTokensMap();
 
       for (const m of members) {
+        // Strict Isolation: Non-admin users ONLY get their own connected pages!
+        if (!isAdmin) {
+          const matchId = userId && (String(m.id) === String(userId) || String(m.facebookId) === String(userId));
+          const matchName = userName && m.name?.toLowerCase() === userName.toLowerCase();
+          if (!matchId && !matchName) {
+            continue; // Skip pages belonging to other members
+          }
+        }
+
         for (const p of m.pages || []) {
           if (p.id && !pagesList.some((existing) => existing.id === p.id)) {
             pagesList.push({
@@ -337,7 +350,25 @@ export async function GET(req: NextRequest) {
               name: p.name,
               category: p.category || "Facebook Page",
               memberName: m.name,
+              userId: m.id,
               role: m.role,
+              hasToken: !!tokenMap[p.id],
+            });
+          }
+        }
+      }
+
+      // If Super Admin, also include official company pages if not already in list
+      if (isAdmin) {
+        for (const p of OFFICIAL_COMPANY_PAGES) {
+          if (!pagesList.some((existing) => existing.id === p.id)) {
+            pagesList.push({
+              id: p.id,
+              name: p.name,
+              category: p.category || "Facebook Page (Official)",
+              memberName: "VST Super Admin",
+              userId: "admin",
+              role: "owner",
               hasToken: !!tokenMap[p.id],
             });
           }

@@ -139,23 +139,33 @@ Emmi ជំនួយការពិសេសសម្រាប់សុខភា
 
 interface VideoPublisherTabProps {
   lang: "km" | "en";
-  connectedPages?: { id: string; name: string; category?: string; memberName?: string }[];
-  currentUser?: { name?: string; role?: string; id?: string };
+  connectedPages?: { id: string; name: string; category?: string; memberName?: string; userId?: string }[];
+  currentUser?: { name?: string; role?: string; id?: string; email?: string; loginType?: string };
+  isAdmin?: boolean;
 }
 
 export default function VideoPublisherTab({
   lang,
   connectedPages: propsPages = [],
   currentUser,
+  isAdmin,
 }: VideoPublisherTabProps) {
-  // Dynamic Target Pages: Loaded live from API (all members' pages) + props
+  const isSuperAdmin =
+    Boolean(isAdmin) ||
+    currentUser?.role === "owner" ||
+    currentUser?.loginType === "admin" ||
+    currentUser?.name === "VST Super Admin" ||
+    currentUser?.email === "admin@vst.com";
+
+  // Dynamic Target Pages: Loaded live from API (strictly filtered by permissions)
   const [allTargetPages, setAllTargetPages] = useState<{
     id: string;
     name: string;
     category?: string;
     memberName?: string;
     hasToken?: boolean;
-  }[]>(OFFICIAL_COMPANY_PAGES);
+    userId?: string;
+  }[]>(propsPages && propsPages.length > 0 ? propsPages : (isSuperAdmin ? OFFICIAL_COMPANY_PAGES : []));
 
   const [selectedMemberFilter, setSelectedMemberFilter] = useState<string>("all");
 
@@ -181,35 +191,40 @@ export default function VideoPublisherTab({
 
   // Selected Pages State
   const [selectedPageIds, setSelectedPageIds] = useState<string[]>(
-    OFFICIAL_COMPANY_PAGES.map((p) => p.id)
+    (propsPages && propsPages.length > 0 ? propsPages : (isSuperAdmin ? OFFICIAL_COMPANY_PAGES : [])).map((p) => p.id)
   );
 
-  // Load all live connected pages from Supabase (Includes Sam Moto, Reamm Sunset, etc.)
+  // Load live connected pages strictly based on current user permissions
   useEffect(() => {
     let isMounted = true;
     const fetchLivePublisherPages = async () => {
       try {
-        const res = await fetch("/api/video-publisher?action=pages");
+        const query = isSuperAdmin
+          ? "?action=pages&isAdmin=true"
+          : `?action=pages&userId=${encodeURIComponent(currentUser?.id || "")}&userName=${encodeURIComponent(currentUser?.name || "")}`;
+
+        const res = await fetch(`/api/video-publisher${query}`);
         if (res.ok) {
           const json = await res.json();
-          if (json.pages && Array.isArray(json.pages) && json.pages.length > 0) {
+          if (json.pages && Array.isArray(json.pages)) {
             if (!isMounted) return;
-            setAllTargetPages(json.pages);
+            let validPages = json.pages;
 
-            // If a specific member is logged in, select only their pages by default
-            if (currentUser?.name && currentUser.name !== "VST Super Admin") {
-              const myPages = json.pages.filter(
-                (p: any) => p.memberName?.toLowerCase() === currentUser.name?.toLowerCase()
+            // Strict client-side isolation for non-admin
+            if (!isSuperAdmin) {
+              const curName = currentUser?.name?.toLowerCase();
+              const curId = currentUser?.id;
+              validPages = validPages.filter((p: any) =>
+                (curName && (p.memberName || p.ownerName)?.toLowerCase() === curName) ||
+                (curId && (p.userId === curId || p.ownerId === curId))
               );
-              if (myPages.length > 0) {
-                setSelectedPageIds(myPages.map((p: any) => p.id));
-                setSelectedMemberFilter(currentUser.name);
-                return;
-              }
             }
 
-            // Default for Super Admin: select all pages
-            setSelectedPageIds(json.pages.map((p: any) => p.id));
+            setAllTargetPages(validPages);
+            setSelectedPageIds(validPages.map((p: any) => p.id));
+            if (!isSuperAdmin && currentUser?.name) {
+              setSelectedMemberFilter(currentUser.name);
+            }
             return;
           }
         }
@@ -220,6 +235,9 @@ export default function VideoPublisherTab({
       if (propsPages && propsPages.length > 0) {
         setAllTargetPages(propsPages);
         setSelectedPageIds(propsPages.map((p) => p.id));
+      } else if (!isSuperAdmin) {
+        setAllTargetPages([]);
+        setSelectedPageIds([]);
       }
     };
 
@@ -227,7 +245,7 @@ export default function VideoPublisherTab({
     return () => {
       isMounted = false;
     };
-  }, [currentUser?.name, propsPages]);
+  }, [currentUser?.name, currentUser?.id, isSuperAdmin, propsPages]);
 
   // Caption Strategy / Style Selector
   const [captionStyle, setCaptionStyle] = useState<
@@ -528,7 +546,9 @@ export default function VideoPublisherTab({
   ) as string[];
 
   const displayedPages =
-    selectedMemberFilter === "all"
+    !isSuperAdmin
+      ? allTargetPages
+      : selectedMemberFilter === "all"
       ? allTargetPages
       : allTargetPages.filter((p) => p.memberName === selectedMemberFilter);
 
@@ -1156,8 +1176,8 @@ export default function VideoPublisherTab({
               </span>
             </div>
 
-            {/* Member Filter Pills */}
-            {memberNames.length > 0 && (
+            {/* Member Filter Pills (Only for Super Admin managing multiple members) */}
+            {isSuperAdmin && memberNames.length > 1 && (
               <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-slate-900/80 border border-slate-800 text-xs">
                 <button
                   type="button"
@@ -1206,7 +1226,9 @@ export default function VideoPublisherTab({
             {/* Shortcuts: Select All / Deselect All */}
             <div className="flex items-center justify-between text-[11px] text-slate-400 border-b border-slate-800 pb-2">
               <span>
-                {selectedMemberFilter === "all"
+                {!isSuperAdmin
+                  ? `Page របស់អ្នក (${displayedPages.length})`
+                  : selectedMemberFilter === "all"
                   ? `Page ទាំងអស់ (${displayedPages.length})`
                   : `Page របស់ ${selectedMemberFilter} (${displayedPages.length})`}
               </span>
@@ -1231,7 +1253,18 @@ export default function VideoPublisherTab({
 
             {/* Pages Checkbox List */}
             <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-              {displayedPages.map((p) => {
+              {displayedPages.length === 0 ? (
+                <div className="py-8 text-center rounded-xl border border-dashed border-slate-800 bg-slate-900/40 p-4">
+                  <span className="text-xl block mb-1">📄</span>
+                  <span className="text-xs font-bold text-white block">
+                    មិនទាន់មាន Facebook Page នៅឡើយទេ
+                  </span>
+                  <p className="text-[11px] text-slate-400 mt-1 max-w-xs mx-auto">
+                    គណនីរបស់អ្នកមិនទាន់មាន Facebook Page សម្រាប់ផុសទេ។ សូមភ្ជាប់ Page របស់អ្នកនៅលើផ្ទាំង Dashboard ជាមុនសិន។
+                  </p>
+                </div>
+              ) : (
+                displayedPages.map((p) => {
                 const isSelected = selectedPageIds.includes(p.id);
                 const owner = p.memberName;
                 return (
@@ -1275,7 +1308,7 @@ export default function VideoPublisherTab({
                     </div>
                   </div>
                 );
-              })}
+              }))}
             </div>
 
             {selectedPageIds.length > 0 && (

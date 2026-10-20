@@ -56,6 +56,7 @@ interface StoryBatchPublisherTabProps {
     role?: string;
     loginType?: string;
   };
+  isAdmin?: boolean;
 }
 
 const STORY_FUNNEL_PRESETS = [
@@ -89,7 +90,14 @@ export default function StoryBatchPublisherTab({
   lang,
   connectedPages = [],
   currentUser,
+  isAdmin,
 }: StoryBatchPublisherTabProps) {
+  const isSuperAdmin =
+    Boolean(isAdmin) ||
+    currentUser?.role === "owner" ||
+    currentUser?.loginType === "admin" ||
+    currentUser?.name === "VST Super Admin";
+
   // 1. Pages state (Supports selecting multiple pages freely)
   const [pagesList, setPagesList] = useState<ConnectedPage[]>(connectedPages);
   const [selectedPageIds, setSelectedPageIds] = useState<string[]>([]);
@@ -100,7 +108,9 @@ export default function StoryBatchPublisherTab({
   ) as string[];
 
   const displayedPages =
-    selectedMemberFilter === "all"
+    !isSuperAdmin
+      ? pagesList
+      : selectedMemberFilter === "all"
       ? pagesList
       : pagesList.filter(
           (p) => (p.ownerName || (p as any).memberName) === selectedMemberFilter
@@ -152,29 +162,45 @@ export default function StoryBatchPublisherTab({
     let isMounted = true;
     const fetchPages = async () => {
       try {
-        const res = await fetch("/api/video-publisher?action=pages");
+        const query = isSuperAdmin
+          ? "?action=pages&isAdmin=true"
+          : `?action=pages&userId=${encodeURIComponent(currentUser?.id || "")}&userName=${encodeURIComponent(currentUser?.name || "")}`;
+
+        const res = await fetch(`/api/video-publisher${query}`);
         if (res.ok) {
           const data = await res.json();
-          if (data.pages && Array.isArray(data.pages) && data.pages.length > 0) {
+          if (data.pages && Array.isArray(data.pages)) {
             if (!isMounted) return;
-            setPagesList(data.pages);
+            let validPages = data.pages;
 
-            // Auto-select user's pages or all
-            if (currentUser?.name && currentUser.name !== "VST Super Admin") {
-              const myPages = data.pages.filter(
-                (p: any) => (p.memberName || p.ownerName)?.toLowerCase() === currentUser.name?.toLowerCase()
+            // Strict client-side isolation for non-admin
+            if (!isSuperAdmin) {
+              const curName = currentUser?.name?.toLowerCase();
+              const curId = currentUser?.id;
+              validPages = validPages.filter((p: any) =>
+                (curName && (p.memberName || p.ownerName)?.toLowerCase() === curName) ||
+                (curId && (p.userId === curId || p.ownerId === curId))
               );
-              if (myPages.length > 0) {
-                setSelectedPageIds(myPages.map((p: any) => p.id));
-                setSelectedMemberFilter(currentUser.name);
-                return;
-              }
             }
-            setSelectedPageIds(data.pages.map((p: any) => p.id));
+
+            setPagesList(validPages);
+            setSelectedPageIds(validPages.map((p: any) => p.id));
+            if (!isSuperAdmin && currentUser?.name) {
+              setSelectedMemberFilter(currentUser.name);
+            }
+            return;
           }
         }
       } catch (err) {
         console.warn("Could not load pages:", err);
+      }
+
+      if (connectedPages && connectedPages.length > 0) {
+        setPagesList(connectedPages);
+        setSelectedPageIds(connectedPages.map((p) => p.id));
+      } else if (!isSuperAdmin) {
+        setPagesList([]);
+        setSelectedPageIds([]);
       }
     };
 
@@ -182,7 +208,7 @@ export default function StoryBatchPublisherTab({
     return () => {
       isMounted = false;
     };
-  }, [currentUser?.name]);
+  }, [currentUser?.name, currentUser?.id, isSuperAdmin, connectedPages]);
 
   // Load history
   const loadHistory = async () => {
@@ -589,8 +615,8 @@ export default function StoryBatchPublisherTab({
               </span>
             </div>
 
-            {/* Member Filter Pills */}
-            {memberNames.length > 0 && (
+            {/* Member Filter Pills (Super Admin Only) */}
+            {isSuperAdmin && memberNames.length > 1 && (
               <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-slate-900/80 border border-slate-800 text-xs">
                 <button
                   type="button"
@@ -639,7 +665,9 @@ export default function StoryBatchPublisherTab({
             {/* Shortcuts: Select All / Deselect All */}
             <div className="flex items-center justify-between text-[11px] text-slate-400 border-b border-slate-800 pb-2">
               <span>
-                {selectedMemberFilter === "all"
+                {!isSuperAdmin
+                  ? `Page របស់អ្នក (${displayedPages.length})`
+                  : selectedMemberFilter === "all"
                   ? `Page ទាំងអស់ (${displayedPages.length})`
                   : `Page របស់ ${selectedMemberFilter} (${displayedPages.length})`}
               </span>
@@ -664,7 +692,18 @@ export default function StoryBatchPublisherTab({
 
             {/* Pages Checkbox List */}
             <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-              {displayedPages.map((p) => {
+              {displayedPages.length === 0 ? (
+                <div className="py-8 text-center rounded-xl border border-dashed border-slate-800 bg-slate-900/30 p-4">
+                  <span className="text-xl block mb-1">📄</span>
+                  <span className="text-xs font-bold text-white block">
+                    មិនទាន់មាន Facebook Page នៅឡើយទេ
+                  </span>
+                  <p className="text-[11px] text-slate-400 mt-1 max-w-xs mx-auto">
+                    គណនីរបស់អ្នកមិនទាន់មាន Facebook Page សម្រាប់ផុស Story ទេ។ សូមភ្ជាប់ Page របស់អ្នកនៅលើផ្ទាំង Dashboard ជាមុនសិន។
+                  </p>
+                </div>
+              ) : (
+                displayedPages.map((p) => {
                 const isSelected = selectedPageIds.includes(p.id);
                 const owner = p.ownerName || (p as any).memberName;
                 return (
@@ -708,7 +747,7 @@ export default function StoryBatchPublisherTab({
                     </div>
                   </div>
                 );
-              })}
+              }))}
             </div>
 
             {selectedPageIds.length > 0 && (

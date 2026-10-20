@@ -97,10 +97,11 @@ export default function VSTAssistantApp() {
   });
 
   const isAdmin =
-    currentUser.loginType === "admin" ||
-    currentUser.role === "owner" ||
-    currentUser.email === "admin@vst.com" ||
-    currentUser.name === "VST Super Admin";
+    Boolean(isLoggedIn) &&
+    (currentUser.loginType === "admin" ||
+      currentUser.role === "owner" ||
+      currentUser.email === "admin@vst.com" ||
+      currentUser.name === "VST Super Admin");
 
   const [managedPages, setManagedPages] = useState<
     Array<{
@@ -592,7 +593,8 @@ export default function VSTAssistantApp() {
       localStorage.removeItem("vst_admin_session");
       sessionStorage.removeItem("vst_admin_session");
     } catch {}
-    setCurrentUser({ name: "VST Super Admin", loginType: "admin" });
+    setManagedPages([]);
+    setCurrentUser({ name: "", loginType: undefined, role: undefined });
     setIsLoggedIn(false);
   };
 
@@ -2273,7 +2275,7 @@ export default function VSTAssistantApp() {
                   </div>
 
                   <div className="space-y-2.5">
-                    {managedPages.length === 0 ? (
+                    {displayedPages.length === 0 ? (
                       <div className="py-8 text-center rounded-2xl border border-dashed border-slate-800 bg-slate-900/40 p-6">
                         <FileText className="h-9 w-9 text-slate-500 mx-auto mb-2" />
                         <h4 className="text-xs font-bold text-slate-200">
@@ -2293,7 +2295,7 @@ export default function VSTAssistantApp() {
                         </button>
                       </div>
                     ) : (
-                      managedPages.map((p, i) => (
+                      displayedPages.map((p, i) => (
                         <div
                           key={p.id || i}
                           className="flex items-center justify-between rounded-2xl border border-slate-800/80 bg-slate-900/60 p-3.5 transition-all duration-200 hover:border-cyan-500/40 hover:bg-slate-800/60 hover:scale-[1.01] hover:shadow-md hover:shadow-cyan-950/40"
@@ -2545,26 +2547,28 @@ export default function VSTAssistantApp() {
                       <span className="font-bold text-white underline">
                         {selectedBotPageId === "default"
                           ? lang === "km" ? "ទូទៅ (Global)" : "Default (Global)"
-                          : managedPages.find((p) => p.id === selectedBotPageId)?.name || selectedBotPageId}
+                          : displayedPages.find((p) => p.id === selectedBotPageId)?.name || selectedBotPageId}
                       </span>
                     </span>
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedBotPageId("default")}
-                      className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition ${
-                        selectedBotPageId === "default"
-                          ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md shadow-cyan-500/20 ring-1 ring-cyan-400"
-                          : "bg-slate-800/80 text-slate-300 hover:bg-slate-800 hover:text-white"
-                      }`}
-                    >
-                      <span>🌐</span>
-                      <span>{lang === "km" ? "ទូទៅ (Global Default)" : "Default (All Pages)"}</span>
-                    </button>
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedBotPageId("default")}
+                        className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition ${
+                          selectedBotPageId === "default"
+                            ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md shadow-cyan-500/20 ring-1 ring-cyan-400"
+                            : "bg-slate-800/80 text-slate-300 hover:bg-slate-800 hover:text-white"
+                        }`}
+                      >
+                        <span>🌐</span>
+                        <span>{lang === "km" ? "ទូទៅ (Global Default)" : "Default (All Pages)"}</span>
+                      </button>
+                    )}
 
-                    {managedPages.map((page) => (
+                    {displayedPages.map((page) => (
                       <button
                         key={page.id}
                         type="button"
@@ -4370,8 +4374,9 @@ export default function VSTAssistantApp() {
           {activeTab === "video_publisher" && (
             <VideoPublisherTab
               lang={lang}
-              connectedPages={managedPages}
+              connectedPages={displayedPages}
               currentUser={currentUser}
+              isAdmin={isAdmin}
             />
           )}
 
@@ -4379,8 +4384,9 @@ export default function VSTAssistantApp() {
           {activeTab === "story_publisher" && (
             <StoryBatchPublisherTab
               lang={lang}
-              connectedPages={managedPages}
+              connectedPages={displayedPages}
               currentUser={currentUser}
+              isAdmin={isAdmin}
             />
           )}
         </div>
