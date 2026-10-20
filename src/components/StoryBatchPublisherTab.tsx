@@ -184,7 +184,6 @@ export default function StoryBatchPublisherTab({
             }
 
             setPagesList(validPages);
-            setSelectedPageIds(validPages.map((p: any) => p.id));
             if (!isSuperAdmin && currentUser?.name) {
               setSelectedMemberFilter(currentUser.name);
             }
@@ -197,10 +196,8 @@ export default function StoryBatchPublisherTab({
 
       if (connectedPages && connectedPages.length > 0) {
         setPagesList(connectedPages);
-        setSelectedPageIds(connectedPages.map((p) => p.id));
       } else if (!isSuperAdmin) {
         setPagesList([]);
-        setSelectedPageIds([]);
       }
     };
 
@@ -374,66 +371,225 @@ export default function StoryBatchPublisherTab({
         );
 
         try {
-          const formData = new FormData();
-          formData.append("pageId", pId);
-          formData.append("file", item.file, item.file.name);
-          formData.append("mediaType", item.mediaType);
-          formData.append("caption", item.caption || "");
-          formData.append("title", item.title || "");
+          let finalPostId: string | undefined = undefined;
 
-          if (publishDestination === "story") {
-            formData.append(
-              "action",
-              item.mediaType === "video" ? "publish_video_story" : "publish_photo_story"
-            );
+          // A. RESUMABLE CHUNKED UPLOAD FOR VIDEO STORIES (Bypasses Vercel 4.5MB limit)
+          if (publishDestination === "story" && item.mediaType === "video") {
+            const fileSize = item.file.size;
+            const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB slices
+            const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
+
+            // Step 1: Start Video Story Session
+            const startRes = await fetch("/api/story-publisher", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "resumable_story_start",
+                pageId: pId,
+              }),
+            });
+            const startText = await startRes.text();
+            let startData: any = {};
+            try {
+              startData = JSON.parse(startText);
+            } catch {
+              throw new Error(startText.slice(0, 100));
+            }
+
+            if (!startRes.ok || !startData.upload_url || !startData.video_id) {
+              throw new Error(startData?.error || "មិនអាចបង្កើត Upload Session សម្រាប់ Story បានទេ");
+            }
+
+            const { upload_url, video_id } = startData;
+
+            // Step 2: Transfer 2MB Chunks Sequentially
+            let startOffset = 0;
+            let chunkIdx = 0;
+            while (startOffset < fileSize) {
+              const endOffset = Math.min(startOffset + CHUNK_SIZE, fileSize);
+              const chunkBlob = item.file.slice(startOffset, endOffset);
+
+              setPublishProgress({
+                current: overallStep,
+                total: grandTotalSteps,
+                percent: Math.min(
+                  99,
+                  Math.round(((overallStep - 1 + endOffset / fileSize) / grandTotalSteps) * 100)
+                ),
+                statusText: `[Page ${pIdx + 1}/${totalPages}: ${targetPage.name}] កំពុង Upload Chunk (${chunkIdx + 1}/${totalChunks}) នៃ Story ទី ${i + 1}/${totalItems}...`,
+              });
+
+              const chunkForm = new FormData();
+              chunkForm.append("action", "resumable_story_transfer");
+              chunkForm.append("pageId", pId);
+              chunkForm.append("upload_url", upload_url);
+              chunkForm.append("start_offset", startOffset.toString());
+              chunkForm.append("file_size", fileSize.toString());
+              chunkForm.append("chunk", chunkBlob, "chunk.mp4");
+
+              const transferRes = await fetch("/api/story-publisher", {
+                method: "POST",
+                body: chunkForm,
+              });
+              const transferText = await transferRes.text();
+              let transferData: any = {};
+              try {
+                transferData = JSON.parse(transferText);
+              } catch {
+                throw new Error(transferText.slice(0, 100));
+              }
+
+              if (!transferRes.ok || transferData.error) {
+                const errDetail = transferData?.error?.message || transferData?.error || "Transfer failed";
+                throw new Error(`Chunk (${chunkIdx + 1}/${totalChunks}): ${errDetail}`);
+              }
+
+              chunkIdx++;
+              startOffset = endOffset;
+            }
+
+            // Step 3: Finish and Publish Video Story
+            const finishRes = await fetch("/api/story-publisher", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "resumable_story_finish",
+                pageId: pId,
+                video_id,
+              }),
+            });
+            const finishText = await finishRes.text();
+            let finishData: any = {};
+            try {
+              finishData = JSON.parse(finishText);
+            } catch {
+              throw new Error(finishText.slice(0, 100));
+            }
+
+            if (!finishRes.ok || (!finishData.success && !finishData.postId)) {
+              throw new Error(finishData?.error || "Failed to finalize video story");
+            }
+            finalPostId = finishData.postId || video_id;
+
+          // B. RESUMABLE CHUNKED UPLOAD FOR FEED VIDEOS (> 3MB)
+          } else if (publishDestination === "feed" && item.mediaType === "video" && item.file.size > 3 * 1024 * 1024) {
+            const fileSize = item.file.size;
+            const CHUNK_SIZE = 2 * 1024 * 1024;
+            const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
+
+            const startRes = await fetch("/api/video-publisher", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "resumable_start",
+                pageId: pId,
+                fileSize,
+              }),
+            });
+            const startData = await startRes.json();
+            if (!startRes.ok || !startData.upload_session_id) {
+              throw new Error(startData?.error?.message || startData?.error || "Failed to initialize video session");
+            }
+
+            const sessionId = startData.upload_session_id;
+            let startOffset = Number(startData.start_offset || 0);
+            let chunkIdx = 0;
+
+            while (startOffset < fileSize) {
+              const endOffset = Math.min(startOffset + CHUNK_SIZE, fileSize);
+              const chunkBlob = item.file.slice(startOffset, endOffset);
+
+              const chunkForm = new FormData();
+              chunkForm.append("action", "resumable_transfer");
+              chunkForm.append("pageId", pId);
+              chunkForm.append("upload_session_id", sessionId);
+              chunkForm.append("start_offset", startOffset.toString());
+              chunkForm.append("chunk", chunkBlob, "chunk.mp4");
+
+              const transferRes = await fetch("/api/video-publisher", {
+                method: "POST",
+                body: chunkForm,
+              });
+              const transferData = await transferRes.json();
+              if (!transferRes.ok || transferData.error) {
+                throw new Error(transferData?.error?.message || "Chunk transfer error");
+              }
+              chunkIdx++;
+              startOffset = endOffset;
+            }
+
+            const finishRes = await fetch("/api/video-publisher", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "resumable_finish",
+                pageId: pId,
+                upload_session_id: sessionId,
+                title: item.title || "Video Post",
+                description: item.caption || "",
+              }),
+            });
+            const finishData = await finishRes.json();
+            if (!finishRes.ok || !finishData.success) {
+              throw new Error(finishData?.error?.message || "Failed to finish video post");
+            }
+            finalPostId = finishData.videoId || finishData.id;
+
+          // C. DIRECT UPLOAD FOR PHOTOS OR SMALL FILES (< 3MB)
           } else {
-            formData.append("action", "publish_feed");
+            const formData = new FormData();
+            formData.append("pageId", pId);
+            formData.append("file", item.file, item.file.name);
+            formData.append("mediaType", item.mediaType);
+            formData.append("caption", item.caption || "");
+            formData.append("title", item.title || "");
+
+            if (publishDestination === "story") {
+              formData.append("action", "publish_photo_story");
+            } else {
+              formData.append("action", "publish_feed");
+            }
+
+            const res = await fetch("/api/story-publisher", {
+              method: "POST",
+              body: formData,
+            });
+
+            const resText = await res.text();
+            let data: any = {};
+            try {
+              data = JSON.parse(resText);
+            } catch {
+              throw new Error(resText.slice(0, 100) || `HTTP Error ${res.status}`);
+            }
+
+            if (!res.ok || (!data.success && !data.postId)) {
+              throw new Error(data.error || "ការផុសបរាជ័យ");
+            }
+            finalPostId = data.postId || data.id;
           }
 
-          const res = await fetch("/api/story-publisher", {
-            method: "POST",
-            body: formData,
+          // SUCCESS
+          completedCount++;
+          setBatchItems((prev) =>
+            prev.map((it) =>
+              it.id === item.id ? { ...it, status: "success", postId: finalPostId } : it
+            )
+          );
+
+          historyItemResults.push({
+            id: item.id,
+            mediaType: item.mediaType,
+            status: "success",
+            postId: finalPostId,
+            preview: item.caption.slice(0, 50) + "...",
           });
-
-          const data = await res.json();
-
-          if (res.ok && (data.success || data.postId)) {
-            completedCount++;
-            const finalPostId = data.postId || data.id;
-
-            setBatchItems((prev) =>
-              prev.map((it) =>
-                it.id === item.id ? { ...it, status: "success", postId: finalPostId } : it
-              )
-            );
-
-            historyItemResults.push({
-              id: item.id,
-              mediaType: item.mediaType,
-              status: "success",
-              postId: finalPostId,
-              preview: item.caption.slice(0, 50) + "...",
-            });
-          } else {
-            const errMessage = data.error || "ការផុសបរាជ័យ";
-            setBatchItems((prev) =>
-              prev.map((it) =>
-                it.id === item.id ? { ...it, status: "error", errorMessage: errMessage } : it
-              )
-            );
-
-            historyItemResults.push({
-              id: item.id,
-              mediaType: item.mediaType,
-              status: "error",
-              message: errMessage,
-            });
-          }
         } catch (err: any) {
+          const errMessage = err.message || "Network Error";
           setBatchItems((prev) =>
             prev.map((it) =>
               it.id === item.id
-                ? { ...it, status: "error", errorMessage: err.message || "Network Error" }
+                ? { ...it, status: "error", errorMessage: errMessage }
                 : it
             )
           );
@@ -442,7 +598,7 @@ export default function StoryBatchPublisherTab({
             id: item.id,
             mediaType: item.mediaType,
             status: "error",
-            message: err.message || "Network Error",
+            message: errMessage,
           });
         }
 
@@ -620,10 +776,7 @@ export default function StoryBatchPublisherTab({
               <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-slate-900/80 border border-slate-800 text-xs">
                 <button
                   type="button"
-                  onClick={() => {
-                    setSelectedMemberFilter("all");
-                    setSelectedPageIds(pagesList.map((p) => p.id));
-                  }}
+                  onClick={() => setSelectedMemberFilter("all")}
                   className={`px-2.5 py-1 rounded-lg font-medium transition text-[11px] ${
                     selectedMemberFilter === "all"
                       ? "bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-bold shadow"
@@ -640,14 +793,7 @@ export default function StoryBatchPublisherTab({
                     <button
                       key={mName}
                       type="button"
-                      onClick={() => {
-                        setSelectedMemberFilter(mName);
-                        setSelectedPageIds(
-                          pagesList
-                            .filter((p) => (p.ownerName || (p as any).memberName) === mName)
-                            .map((p) => p.id)
-                        );
-                      }}
+                      onClick={() => setSelectedMemberFilter(mName)}
                       className={`px-2.5 py-1 rounded-lg font-medium transition text-[11px] flex items-center gap-1 ${
                         selectedMemberFilter === mName
                           ? "bg-cyan-600 text-white font-bold shadow"
@@ -664,28 +810,34 @@ export default function StoryBatchPublisherTab({
 
             {/* Shortcuts: Select All / Deselect All */}
             <div className="flex items-center justify-between text-[11px] text-slate-400 border-b border-slate-800 pb-2">
-              <span>
-                {!isSuperAdmin
-                  ? `Page របស់អ្នក (${displayedPages.length})`
-                  : selectedMemberFilter === "all"
-                  ? `Page ទាំងអស់ (${displayedPages.length})`
-                  : `Page របស់ ${selectedMemberFilter} (${displayedPages.length})`}
-              </span>
-              <div className="flex items-center gap-2 font-semibold">
+              <div className="flex items-center gap-1.5">
+                <span>
+                  {!isSuperAdmin
+                    ? `Page របស់អ្នក (${displayedPages.length})`
+                    : selectedMemberFilter === "all"
+                    ? `Page ទាំងអស់ (${displayedPages.length})`
+                    : `Page របស់ ${selectedMemberFilter} (${displayedPages.length})`}
+                </span>
+                {selectedPageIds.length > 0 && (
+                  <span className="rounded-md bg-cyan-500/20 px-1.5 py-0.5 text-[10px] font-bold text-cyan-300 border border-cyan-500/30">
+                    បានជ្រើស {selectedPageIds.length}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 font-semibold">
                 <button
                   type="button"
                   onClick={selectAllDisplayed}
-                  className="text-cyan-400 hover:text-cyan-300 hover:underline"
+                  className="rounded-lg bg-cyan-500/10 px-2.5 py-1 text-[11px] font-bold text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/20 transition active:scale-95"
                 >
                   ✓ ជ្រើសទាំងអស់
                 </button>
-                <span>•</span>
                 <button
                   type="button"
                   onClick={deselectAllDisplayed}
-                  className="text-slate-500 hover:text-slate-400 hover:underline"
+                  className="rounded-lg bg-slate-800/80 px-2.5 py-1 text-[11px] text-slate-400 border border-slate-700/80 hover:bg-slate-800 hover:text-white transition active:scale-95"
                 >
-                  ដោះទាំងអស់
+                  ✕ ដោះទាំងអស់
                 </button>
               </div>
             </div>

@@ -114,10 +114,46 @@ export async function POST(req: NextRequest) {
   try {
     const contentType = req.headers.get("content-type") || "";
 
-    // 1. MULTIPART FORM-DATA: Direct file upload for Photo/Video Stories
+    // 1. MULTIPART FORM-DATA: Direct file upload for Photo/Video Stories & Chunk Transfers
     if (contentType.includes("multipart/form-data")) {
       const formData = await req.formData();
       const action = formData.get("action") as string;
+
+      // 1A. RESUMABLE VIDEO STORY CHUNK TRANSFER (Bypasses Vercel 4.5MB payload limit)
+      if (action === "resumable_story_transfer") {
+        const pageId = formData.get("pageId") as string;
+        const uploadUrl = formData.get("upload_url") as string;
+        const startOffset = (formData.get("start_offset") as string) || "0";
+        const fileSize = (formData.get("file_size") as string) || "0";
+        const chunk = formData.get("chunk") as File | Blob | null;
+
+        if (!pageId || !uploadUrl || !chunk) {
+          return NextResponse.json({ error: "Missing required chunk transfer parameters" }, { status: 400 });
+        }
+
+        const tokenMap = await getPageTokensMap();
+        const pageToken = tokenMap[pageId] || process.env.FB_PAGE_ACCESS_TOKEN;
+        if (!pageToken) {
+          return NextResponse.json({ error: `No access token found for page ${pageId}` }, { status: 400 });
+        }
+
+        const chunkBuffer = await chunk.arrayBuffer();
+
+        const binRes = await fetch(uploadUrl, {
+          method: "POST",
+          headers: {
+            Authorization: `OAuth ${pageToken}`,
+            offset: startOffset,
+            file_size: fileSize,
+            "Content-Type": "video/mp4",
+          },
+          body: chunkBuffer,
+        });
+
+        const binData = await binRes.json().catch(() => ({ success: binRes.ok }));
+        return NextResponse.json(binData, { status: binRes.status });
+      }
+
       const pageId = formData.get("pageId") as string;
       const file = formData.get("file") as File | null;
       const mediaType = (formData.get("mediaType") as "photo" | "video") || "photo";
@@ -287,6 +323,87 @@ export async function POST(req: NextRequest) {
     // 2. JSON REQUESTS (History, Remote Media, or Batch Configuration)
     const body = await req.json();
     const { action } = body;
+
+    // 2A. RESUMABLE VIDEO STORY: START PHASE (Bypasses Vercel 4.5MB payload limit)
+    if (action === "resumable_story_start") {
+      const { pageId } = body as { pageId: string };
+      if (!pageId) {
+        return NextResponse.json({ error: "pageId is required" }, { status: 400 });
+      }
+
+      const tokenMap = await getPageTokensMap();
+      const pageToken = tokenMap[pageId] || process.env.FB_PAGE_ACCESS_TOKEN;
+      if (!pageToken) {
+        return NextResponse.json(
+          { error: `ពុំមាន Access Token សម្រាប់ Page ID ${pageId} ទេ (សូម Re-authorize តាម Facebook Login)` },
+          { status: 400 }
+        );
+      }
+
+      const startParams = new URLSearchParams({
+        upload_phase: "start",
+        access_token: pageToken,
+      });
+
+      const startRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}/video_stories`, {
+        method: "POST",
+        body: startParams,
+      });
+      const startData = await startRes.json();
+
+      if (!startRes.ok || !startData.upload_url || !startData.video_id) {
+        const errMsg = startData?.error?.message || "Failed to initialize video story session";
+        return NextResponse.json({ error: errMsg }, { status: startRes.status });
+      }
+
+      return NextResponse.json({
+        success: true,
+        upload_url: startData.upload_url,
+        video_id: startData.video_id,
+      });
+    }
+
+    // 2B. RESUMABLE VIDEO STORY: FINISH PHASE
+    if (action === "resumable_story_finish") {
+      const { pageId, video_id } = body as { pageId: string; video_id: string };
+      if (!pageId || !video_id) {
+        return NextResponse.json({ error: "pageId and video_id are required" }, { status: 400 });
+      }
+
+      const tokenMap = await getPageTokensMap();
+      const pageToken = tokenMap[pageId] || process.env.FB_PAGE_ACCESS_TOKEN;
+      if (!pageToken) {
+        return NextResponse.json(
+          { error: `ពុំមាន Access Token សម្រាប់ Page ID ${pageId} ទេ` },
+          { status: 400 }
+        );
+      }
+
+      const finishParams = new URLSearchParams({
+        upload_phase: "finish",
+        video_id,
+        access_token: pageToken,
+      });
+
+      const finishRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}/video_stories`, {
+        method: "POST",
+        body: finishParams,
+      });
+      const finishData = await finishRes.json();
+
+      if (!finishRes.ok || (!finishData.success && !finishData.post_id && !finishData.id)) {
+        const errMsg = finishData?.error?.message || "Failed to finish video story";
+        return NextResponse.json({ error: errMsg }, { status: finishRes.status });
+      }
+
+      return NextResponse.json({
+        success: true,
+        type: "video_story",
+        postId: finishData.post_id || finishData.id || video_id,
+        videoId: video_id,
+        message: "បានផុស Video Story ទៅកាន់ Facebook Page ជោគជ័យ!",
+      });
+    }
 
     // Save batch record to history
     if (action === "save_history") {

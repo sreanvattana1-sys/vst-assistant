@@ -972,6 +972,7 @@ export default function VSTAssistantApp() {
       });
 
       setManagedPages((prev) => [newPage, ...prev.filter((p) => p.id !== newPage.id)]);
+      await fetchPages(currentUser);
       setIsConnectFbModalOpen(false);
       setManualFbPageId("");
       setManualFbPageName("");
@@ -3169,13 +3170,14 @@ export default function VSTAssistantApp() {
                       </button>
                     </div>
 
-                    {/* Method 1: One-Click Company Page Picker */}
-                    <div>
-                      <div className="flex items-center justify-between mb-2.5">
-                        <span className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
-                          <span>⚡</span>
-                          <span>{lang === "km" ? "ជម្រើសទី ១ (ស្រួលបំផុត) ៖ ចុចភ្ជាប់ Page របស់ក្រុមហ៊ុន" : "Method 1 (Easiest): One-Click Company Page Picker"}</span>
-                        </span>
+                    {/* Method 1: One-Click Company Page Picker (ADMIN ONLY) */}
+                    {isAdmin && (
+                      <div>
+                        <div className="flex items-center justify-between mb-2.5">
+                          <span className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                            <span>⚡</span>
+                            <span>{lang === "km" ? "ជម្រើសទី ១ (Admin) ៖ ចុចភ្ជាប់ Page របស់ក្រុមហ៊ុន" : "Method 1 (Admin): One-Click Company Page Picker"}</span>
+                          </span>
                         <span className="text-[10px] text-slate-400 font-mono">
                           {COMPANY_PAGES.length} {lang === "km" ? "ផេកផ្លូវការ" : "Official Pages"}
                         </span>
@@ -3256,17 +3258,34 @@ export default function VSTAssistantApp() {
                         })}
                       </div>
                     </div>
+                    )}
 
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1 h-px bg-slate-800" />
-                      <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">
-                        {lang === "km" ? "ឬ ភ្ជាប់ Page ថ្មីផ្សេងទៀត (Manual)" : "OR ADD CUSTOM PAGE"}
-                      </span>
-                      <div className="flex-1 h-px bg-slate-800" />
-                    </div>
+                    {isAdmin && (
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 h-px bg-slate-800" />
+                        <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">
+                          {lang === "km" ? "ឬ ភ្ជាប់ Page ថ្មីផ្សេងទៀត (Manual)" : "OR ADD CUSTOM PAGE"}
+                        </span>
+                        <div className="flex-1 h-px bg-slate-800" />
+                      </div>
+                    )}
 
                     {/* Method 2: Manual Page Input */}
-                    <form onSubmit={handleSaveManualPage} className="space-y-3">
+                    <div>
+                      {!isAdmin && (
+                        <div className="mb-3 rounded-2xl border border-cyan-500/30 bg-cyan-950/30 p-3.5 text-xs text-cyan-200">
+                          <p className="font-bold flex items-center gap-1.5 text-white mb-1">
+                            <span>📄</span>
+                            <span>{lang === "km" ? "ភ្ជាប់ Page ផ្ទាល់ខ្លួនរបស់អ្នក" : "Connect Your Own Page"}</span>
+                          </p>
+                          <p className="text-[11px] text-slate-300 leading-relaxed">
+                            {lang === "km"
+                              ? "សូមបំពេញឈ្មោះ Page និងលេខសម្គាល់ Page ID ឬ Link ផេករបស់អ្នកខាងក្រោម រួចចុច 'រក្សាទុក Page' ដើម្បីយកមកប្រើប្រាស់លើផ្ទាំង Dashboard និងការផុសវីដេអូ/Story។"
+                              : "Enter your page name and page ID/link below to connect it directly to your tester account."}
+                          </p>
+                        </div>
+                      )}
+                      <form onSubmit={handleSaveManualPage} className="space-y-3">
                       <div>
                         <label className="block text-xs font-medium text-slate-300 mb-1">
                           {lang === "km" ? "ឈ្មោះផេក (Page Name) *" : "Page Name *"}
@@ -3319,6 +3338,7 @@ export default function VSTAssistantApp() {
                         </button>
                       </div>
                     </form>
+                  </div>
                   </div>
                 </div>
               )}

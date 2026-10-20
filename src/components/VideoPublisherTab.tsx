@@ -221,7 +221,6 @@ export default function VideoPublisherTab({
             }
 
             setAllTargetPages(validPages);
-            setSelectedPageIds(validPages.map((p: any) => p.id));
             if (!isSuperAdmin && currentUser?.name) {
               setSelectedMemberFilter(currentUser.name);
             }
@@ -234,10 +233,8 @@ export default function VideoPublisherTab({
 
       if (propsPages && propsPages.length > 0) {
         setAllTargetPages(propsPages);
-        setSelectedPageIds(propsPages.map((p) => p.id));
       } else if (!isSuperAdmin) {
         setAllTargetPages([]);
-        setSelectedPageIds([]);
       }
     };
 
@@ -1181,10 +1178,7 @@ export default function VideoPublisherTab({
               <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-slate-900/80 border border-slate-800 text-xs">
                 <button
                   type="button"
-                  onClick={() => {
-                    setSelectedMemberFilter("all");
-                    setSelectedPageIds(allTargetPages.map((p) => p.id));
-                  }}
+                  onClick={() => setSelectedMemberFilter("all")}
                   className={`px-2.5 py-1 rounded-lg font-medium transition text-[11px] ${
                     selectedMemberFilter === "all"
                       ? "bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-bold shadow"
@@ -1201,14 +1195,7 @@ export default function VideoPublisherTab({
                     <button
                       key={mName}
                       type="button"
-                      onClick={() => {
-                        setSelectedMemberFilter(mName);
-                        setSelectedPageIds(
-                          allTargetPages
-                            .filter((p) => p.memberName === mName)
-                            .map((p) => p.id)
-                        );
-                      }}
+                      onClick={() => setSelectedMemberFilter(mName)}
                       className={`px-2.5 py-1 rounded-lg font-medium transition text-[11px] flex items-center gap-1 ${
                         selectedMemberFilter === mName
                           ? "bg-cyan-600 text-white font-bold shadow"
@@ -1225,28 +1212,34 @@ export default function VideoPublisherTab({
 
             {/* Shortcuts: Select All / Deselect All */}
             <div className="flex items-center justify-between text-[11px] text-slate-400 border-b border-slate-800 pb-2">
-              <span>
-                {!isSuperAdmin
-                  ? `Page របស់អ្នក (${displayedPages.length})`
-                  : selectedMemberFilter === "all"
-                  ? `Page ទាំងអស់ (${displayedPages.length})`
-                  : `Page របស់ ${selectedMemberFilter} (${displayedPages.length})`}
-              </span>
-              <div className="flex items-center gap-2 font-semibold">
+              <div className="flex items-center gap-1.5">
+                <span>
+                  {!isSuperAdmin
+                    ? `Page របស់អ្នក (${displayedPages.length})`
+                    : selectedMemberFilter === "all"
+                    ? `Page ទាំងអស់ (${displayedPages.length})`
+                    : `Page របស់ ${selectedMemberFilter} (${displayedPages.length})`}
+                </span>
+                {selectedPageIds.length > 0 && (
+                  <span className="rounded-md bg-cyan-500/20 px-1.5 py-0.5 text-[10px] font-bold text-cyan-300 border border-cyan-500/30">
+                    បានជ្រើស {selectedPageIds.length}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 font-semibold">
                 <button
                   type="button"
                   onClick={selectAllPages}
-                  className="text-cyan-400 hover:text-cyan-300 hover:underline"
+                  className="rounded-lg bg-cyan-500/10 px-2.5 py-1 text-[11px] font-bold text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/20 transition active:scale-95"
                 >
                   ✓ ជ្រើសទាំងអស់
                 </button>
-                <span>•</span>
                 <button
                   type="button"
                   onClick={deselectAllPages}
-                  className="text-slate-500 hover:text-slate-400 hover:underline"
+                  className="rounded-lg bg-slate-800/80 px-2.5 py-1 text-[11px] text-slate-400 border border-slate-700/80 hover:bg-slate-800 hover:text-white transition active:scale-95"
                 >
-                  ដោះទាំងអស់
+                  ✕ ដោះទាំងអស់
                 </button>
               </div>
             </div>

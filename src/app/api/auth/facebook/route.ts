@@ -39,8 +39,12 @@ export async function POST(req: NextRequest) {
 
     if (userData.error) {
       console.error("Facebook User Profile error:", userData.error);
+      const isRateLimit = userData.error.code === 4 || userData.error.code === 17 || userData.error.code === 32;
+      const friendlyError = isRateLimit
+        ? "Facebook App ជាប់ Rate Limit បណ្ដោះអាសន្នពី Meta (#4)។ សូមរង់ចាំប្រហែល ២០-៣០ នាទី រួចសាកល្បងម្ដងទៀត ឬចូលតាម Email/Password ជាបណ្ដោះអាសន្ន!"
+        : userData.error.message;
       return NextResponse.json(
-        { success: false, error: userData.error.message },
+        { success: false, error: friendlyError },
         { status: 400 }
       );
     }
