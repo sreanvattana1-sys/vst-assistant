@@ -1295,9 +1295,11 @@ export default function VSTAssistantApp() {
   };
 
   // Background Auto-Scanner that scans and replies without needing Webhook / App Review
+  // Note: Relaxed to 3 minutes (180,000ms) to prevent exhausting Meta Graph API rate limit (Error #4).
+  // Users can also manually click "ស្កេន Comments ឥឡូវនេះ" whenever needed.
   useEffect(() => {
     runScanner();
-    const interval = setInterval(runScanner, 10000);
+    const interval = setInterval(runScanner, 180000);
     return () => clearInterval(interval);
   }, []);
 

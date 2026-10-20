@@ -173,6 +173,13 @@ export async function GET(req: NextRequest) {
             { cache: "no-store" }
           );
           const feedData = await feedRes.json();
+          if (feedData.error) {
+            const errCode = feedData.error.code;
+            if (errCode === 4 || errCode === 17 || errCode === 32 || errCode === 613) {
+              console.warn(`[Auto-Scanner] Meta rate limit detected (${feedData.error.message}). Halting scanner to let rate limit cool down.`);
+              break;
+            }
+          }
           if (feedData.data && Array.isArray(feedData.data)) {
             postsList.push(...feedData.data);
           }
@@ -185,6 +192,13 @@ export async function GET(req: NextRequest) {
               { cache: "no-store" }
             );
             const fallbackData = await fallbackRes.json();
+            if (fallbackData.error) {
+              const errCode = fallbackData.error.code;
+              if (errCode === 4 || errCode === 17 || errCode === 32 || errCode === 613) {
+                console.warn(`[Auto-Scanner] Meta rate limit detected on fallback (${fallbackData.error.message}). Halting scanner.`);
+                break;
+              }
+            }
             if (fallbackData.data && Array.isArray(fallbackData.data)) {
               postsList.push(...fallbackData.data);
             }
